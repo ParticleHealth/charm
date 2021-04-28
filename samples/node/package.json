@@ -1,0 +1,20 @@
+{
+  "name": "particle-nodejs-fhir-client-example",
+  "version": "1.0.0",
+  "description": "Example Usage for interacting with Particle Health's FHIR API via the fhir-kit-client NodeJS Library",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "engines": {
+    "node": "14.16.1",
+    "npm": "6.14.4"
+  },
+  "dependencies": {
+    "cross-fetch": "3.1.4",
+    "fhir-kit-client": "1.6.5",
+    "yargs": "16.2.0"
+  }
+}

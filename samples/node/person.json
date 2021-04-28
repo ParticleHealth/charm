@@ -1,0 +1,37 @@
+{
+  "resourceType": "Person",
+  "identifier": [
+    {
+      "type": {
+        "text": "ssn"
+      },
+      "value": "123-45-6789"
+    }
+  ],
+  "name": [
+    {
+      "family": "Emmerich",
+      "given": ["Caren"]
+    }
+  ],
+  "telecom": [
+    {
+      "system": "phone",
+      "value": "1-234-567-8910"
+    },
+    {
+      "system": "email",
+      "value": "Caren@doe.com"
+    }
+  ],
+  "gender": "Female",
+  "birthDate": "1986-08-03",
+  "address": [
+    {
+      "line": ["247 Weissnat Rapid Apt 69"],
+      "city": "Waltham",
+      "state": "MA",
+      "postalCode": "02452"
+    }
+  ]
+}
