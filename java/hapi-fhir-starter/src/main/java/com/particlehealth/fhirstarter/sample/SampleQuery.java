@@ -8,9 +8,6 @@ import ca.uhn.fhir.rest.client.api.IGenericClient;
 import ca.uhn.fhir.rest.client.interceptor.BearerTokenAuthInterceptor;
 import ca.uhn.fhir.rest.client.interceptor.LoggingInterceptor;
 import ca.uhn.fhir.util.BundleBuilder;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.particlehealth.fhirstarter.dto.OperationOutput;
-import com.particlehealth.fhirstarter.dto.OperationResult;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
@@ -21,9 +18,11 @@ import org.hl7.fhir.r4.model.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.FileWriter;
 import java.io.IOException;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 public class SampleQuery {
     private static final Logger logger = LoggerFactory.getLogger(SampleQuery.class);
@@ -31,12 +30,11 @@ public class SampleQuery {
     private static String clientId;
     private static String clientSecret;
     private static String host;
-    private static FhirContext fhirContext;
 
+    private static FhirContext fhirContext;
 
     public static void main(String[] args) throws IOException {
         ParseArguments(args);
-        //Generate the JWT to be used for calls to the FHIR server
         String jwt = authorize();
         if (jwt == null) {
             System.out.println("No JWT retrieved from auth endpoint");
@@ -46,9 +44,9 @@ public class SampleQuery {
         IGenericClient client = getClient(jwt);
 
         // Create the demographics.
-        Person person = createPerson();
-        // Register the Person.
+        Person person = createPerson2();
 
+        // Register the Person.
         MethodOutcome outcome = client.create().resource(person).prettyPrint().encodedJson().accept("application/fhir+json").execute();
         logger.info("created person with id: " + outcome.getId().getIdPart());
 
@@ -58,37 +56,45 @@ public class SampleQuery {
         Parameters outParams = client.operation().onInstance(outcome.getId()).named("$query").withParameters(inParams).execute();
 
         String queryURL = outParams.getParameter("status").primitiveValue();
+        String personId = outcome.getId().getIdPart();
 
-        OperationResult result = getPersonQuery(jwt, queryURL);
-        //Check contents of results, if not populated return, there's no resources to pull
-        if (result == null || result.getOutput() == null)
+        //Check if result is a 200, if so we're good to query for resources
+        Integer result = getPersonQuery(jwt, queryURL);
+        if (result == null || result != 200)
             return;
 
-        //Loop through the returned resources
-        //If we want to check for specific types of resources here we can build a mapping of resources and their urls
-        //Currently we need to strip the R4/ from all resource urls
-        Map<String, List<String>> resources = new HashMap<>();
-        for (OperationOutput resource : result.getOutput()) {
-            String url = resource.getUrl().replace("/R4/","");
-            resources.computeIfAbsent(resource.getType(), k -> new ArrayList<>()).add(url);
+        //Once dedup is complete we won't need to handle pagination for composition resources
+        List<String> compositionResources = new ArrayList<>();
+        Bundle bundlePage = client.search().byUrl("/Composition?person=" + personId).returnBundle(Bundle.class).execute();
+        bundlePage.getEntry().forEach(k -> compositionResources.add(k.getFullUrl()));
+        while (bundlePage.getLink(Bundle.LINK_NEXT) != null) {
+            bundlePage = client.loadPage().byUrl(host + bundlePage.getLink(Bundle.LINK_NEXT).getUrl()).andReturnBundle(Bundle.class).execute();
+            bundlePage.getEntry().forEach(k -> compositionResources.add(k.getFullUrl()));
         }
 
-         //Loop through returned resource types and build a master bundle
-        BundleBuilder builder = new BundleBuilder(fhirContext);
-        for (String key: resources.keySet()) {
-            for (String url : resources.get(key)) {
-                IBaseResource partial = client.read().resource(key).withUrl(url).execute();
-                builder.addCollectionEntry(partial);
-                break;
+        List<String> resourceList = new ArrayList<>();
+        for (String compositionResourceUrl : compositionResources) {
+            Composition composition = client.read().resource(Composition.class).withUrl(compositionResourceUrl).execute();
+            for (Composition.SectionComponent section : composition.getSection()) {
+                resourceList.addAll(section.getEntry().stream().map(Reference::getReference).collect(Collectors.toList()));
             }
-            break;
         }
 
-        //Using the accumulated builder, compile the masterBundle
+        //Using the accumulated builder, compile the masterBundle and output it so a file.
         IParser parser = fhirContext.newJsonParser();
         parser.setPrettyPrint(true);
+
+        BundleBuilder builder = new BundleBuilder(fhirContext);
+        for (String url : resourceList) {
+            String resource = url.substring(0, url.indexOf('/'));
+            IBaseResource partial = client.read().resource(resource).withUrl(url).execute();
+            builder.addCollectionEntry(partial);
+        }
+
         IBaseBundle masterBundle = builder.getBundle();
-        System.out.println(parser.encodeResourceToString(masterBundle));
+        FileWriter writer = new FileWriter(personId + "_bundle.json");
+        parser.encodeResourceToWriter(masterBundle, writer);
+        writer.close();
     }
 
     private static String authorize() {
@@ -100,13 +106,13 @@ public class SampleQuery {
 
         try (Response resp = client.newCall(req).execute()) {
             return resp.body().string();
-        } catch (IOException e) {
+        } catch (Exception e) {
             e.printStackTrace();
             return null;
         }
     }
 
-    private static OperationResult getPersonQuery(String jwt, String url) throws IOException {
+    private static Integer getPersonQuery(String jwt, String url) {
         OkHttpClient client = new OkHttpClient();
         url = url.replace("R4/","");
         Request req = new Request.Builder().url(host + "/R4" + url).addHeader("Authorization", jwt).build();
@@ -118,19 +124,14 @@ public class SampleQuery {
                 resp = client.newCall(req).execute();
                 if (resp.code() != 202)
                     break;
-                Thread.sleep(15000);
+                Thread.sleep(5000);
             }
         } catch(Exception e) {
             System.out.println(e);
-        }
-        if (resp == null || resp.code() != 200) {
             return null;
         }
 
-        ObjectMapper mapper = new ObjectMapper();
-        OperationResult res = mapper.readValue(resp.body().string(), OperationResult.class);
-        Objects.requireNonNull(resp.body()).close();
-        return res;
+        return (resp == null) ? null : resp.code();
     }
 
     private static void ParseArguments(String[] args) {
@@ -183,7 +184,9 @@ public class SampleQuery {
         return client;
     }
 
-    private static Person createPerson() {
+    // ~An important note about the old Java date package~
+    // The Month field starts with January at 0, so subtract 1 from the calendar month when inputting the data
+    private static Person createPerson1() {
         return new Person()
                 .addName(new HumanName().setFamily("Aufderhar").addGiven("Federico"))
                 .setGender(Enumerations.AdministrativeGender.MALE)
@@ -195,4 +198,29 @@ public class SampleQuery {
                 .setBirthDate(new Date(81, 6, 12));
     }
 
+    //Person2 has composition resources
+    private static Person createPerson2 () {
+        return new Person()
+                .addName(new HumanName().setFamily("Klein").addGiven("Quinton"))
+                .setGender(Enumerations.AdministrativeGender.MALE)
+                .addAddress(new Address()
+                        .addLine("629 Schuster Common")
+                        .setCity("Amesbury")
+                        .setState("MA")
+                        .setPostalCode("01913"))
+                .setBirthDate(new Date(67, 9, 20));
+    }
+
+    //Person3 has deduped records + composition resources
+    private static Person createPerson3() {
+        return new Person()
+                .addName(new HumanName().setFamily("OConner").addGiven("Anthony"))
+                .setGender(Enumerations.AdministrativeGender.MALE)
+                .addAddress(new Address()
+                        .addLine("1085 Kub Wynd")
+                        .setCity("Boston")
+                        .setState("MA")
+                        .setPostalCode("02136"))
+                .setBirthDate(new Date(42, 2, 22));
+    }
 }
