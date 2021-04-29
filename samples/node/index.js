@@ -102,7 +102,8 @@ const getResources = async (
 }
 
 const getEverything = async (fhirClient, personId) => {
-  // Getting errthing this might take awhile
+  console.log('************** Getting All Resources **************')
+
   const fileName = 'everything.json'
   const promises = allResources.map((resourceType) =>
     getResources(fhirClient, resourceType, personId)
@@ -138,7 +139,8 @@ const getEverything = async (fhirClient, personId) => {
     // ------------------------- PATIENT IS READY ------------------------- //
 
     // ************** Get Resources **************
-    // ------- Get Individual Resource
+    console.log('************** Getting Individual Resource **************')
+
     const resourceType = 'Encounter'
     const fileName = `all${resourceType}s.json`
     const resource = await getResources(fhirClient, resourceType, personId)
@@ -146,19 +148,37 @@ const getEverything = async (fhirClient, personId) => {
 
     console.log(`=============== ${fileName} WRITTEN ===============`)
 
-    // ------- Get Encounters since last month
-    // const today = new Date()
-    // const lastMonth = new Date(
-    //   today.getFullYear(),
-    //   today.getMonth() - 1,
-    //   today.getDate()
-    // ).toISOString()
-    // const resource = await getResource(fhirClient, 'Encounter', personId, {
-    //   date: `gt${lastMonth}`,
-    // })
+    console.log(
+      '************** Getting MedicationStatement Resources from the last month **************'
+    )
 
-    // ------- Get All Resources
-    // await getEverything(fhirClient, personId)
+    const today = new Date()
+    const lastMonth = new Date(
+      today.getFullYear(),
+      today.getMonth() - 1,
+      today.getDate()
+    ).toISOString()
+    const filteredResource = 'MedicationStatement'
+    const filteredResourceFileName = `${filteredResource}-filtered.json`
+    const filteredResourceResults = await getResources(
+      fhirClient,
+      filteredResource,
+      personId,
+      {
+        date: `gt${lastMonth}`,
+      }
+    )
+    fs.writeFileSync(
+      filteredResourceFileName,
+      JSON.stringify(filteredResourceResults),
+      'utf-8'
+    )
+
+    console.log(
+      `=============== ${filteredResourceFileName} WRITTEN ===============`
+    )
+
+    await getEverything(fhirClient, personId)
   } catch (err) {
     console.error('Uh ohhhhhh, somethings wrong')
     console.error(err)

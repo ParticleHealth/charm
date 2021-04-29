@@ -18,6 +18,8 @@
   npm install
 ```
 
+### Up and Running 🔥
+
 - Get your [Paricle Health](https://portal.particlehealth.com/) client_id and client_secret.
 
 - Run the script from your favorite terminal.
@@ -29,3 +31,12 @@ NOTE: BASE_URL will default to 'https://sandbox.particlehealth.com' if not suppl
  --CLIENT_ID=<CLIENT_ID> \
  --CLIENT_SECRET=<CLIENT_SECRET>
 ```
+
+### Examples 🔍
+
+The examples included in this repo are:
+
+1. Creation of a Person
+2. Searching for a Resource
+3. Searching for a Resource with search parameters (ex: since last month)
+4. Searching for all resources [$everything](https://www.hl7.org/fhir/patient-operation-everything.html#examples)
