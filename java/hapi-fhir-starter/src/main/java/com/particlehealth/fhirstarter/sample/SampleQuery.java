@@ -1,7 +1,6 @@
 package com.particlehealth.fhirstarter.sample;
 
 import ca.uhn.fhir.context.FhirContext;
-import ca.uhn.fhir.context.PerformanceOptionsEnum;
 import ca.uhn.fhir.parser.IParser;
 import ca.uhn.fhir.rest.api.MethodOutcome;
 import ca.uhn.fhir.rest.client.api.IGenericClient;
@@ -72,6 +71,7 @@ public class SampleQuery {
             bundlePage.getEntry().forEach(k -> compositionResources.add(k.getFullUrl()));
         }
 
+        //Get all entries from the returned composition resources
         List<String> resourceList = new ArrayList<>();
         for (String compositionResourceUrl : compositionResources) {
             Composition composition = client.read().resource(Composition.class).withUrl(compositionResourceUrl).execute();
@@ -80,16 +80,16 @@ public class SampleQuery {
             }
         }
 
+        //Read all entries, effectively $everything
+        BundleBuilder builder = new BundleBuilder(fhirContext);
+        for (String url : resourceList) {
+            IBaseResource partial = client.read().resource(Bundle.class).withUrl(url).execute();
+            builder.addCollectionEntry(partial);
+        }
+
         //Using the accumulated builder, compile the masterBundle and output it so a file.
         IParser parser = fhirContext.newJsonParser();
         parser.setPrettyPrint(true);
-
-        BundleBuilder builder = new BundleBuilder(fhirContext);
-        for (String url : resourceList) {
-            String resource = url.substring(0, url.indexOf('/'));
-            IBaseResource partial = client.read().resource(resource).withUrl(url).execute();
-            builder.addCollectionEntry(partial);
-        }
 
         IBaseBundle masterBundle = builder.getBundle();
         FileWriter writer = new FileWriter(personId + "_bundle.json");
@@ -106,7 +106,7 @@ public class SampleQuery {
 
         try (Response resp = client.newCall(req).execute()) {
             return resp.body().string();
-        } catch (Exception e) {
+        } catch (IOException e) {
             e.printStackTrace();
             return null;
         }
@@ -169,7 +169,7 @@ public class SampleQuery {
     private static IGenericClient getClient(String jwt) {
         //This is an expensive operation. Set this to be a singleton object in an actual application
         fhirContext = FhirContext.forR4();
-        fhirContext.setPerformanceOptions(PerformanceOptionsEnum.DEFERRED_MODEL_SCANNING);
+      //  fhirContext.setPerformanceOptions(PerformanceOptionsEnum.DEFERRED_MODEL_SCANNING);
         IGenericClient client = fhirContext.newRestfulGenericClient(host + "/R4");
         LoggingInterceptor loggingInterceptor = new LoggingInterceptor();
         loggingInterceptor.setLogRequestSummary(true);
@@ -186,7 +186,7 @@ public class SampleQuery {
 
     // ~An important note about the old Java date package~
     // The Month field starts with January at 0, so subtract 1 from the calendar month when inputting the data
-    private static Person createPerson1() {
+    private static Person createPerson() {
         return new Person()
                 .addName(new HumanName().setFamily("Aufderhar").addGiven("Federico"))
                 .setGender(Enumerations.AdministrativeGender.MALE)
@@ -199,7 +199,7 @@ public class SampleQuery {
     }
 
     //Person2 has composition resources
-    private static Person createPerson2 () {
+    private static Person createPerson2() {
         return new Person()
                 .addName(new HumanName().setFamily("Klein").addGiven("Quinton"))
                 .setGender(Enumerations.AdministrativeGender.MALE)
@@ -211,7 +211,7 @@ public class SampleQuery {
                 .setBirthDate(new Date(67, 9, 20));
     }
 
-    //Person3 has deduped records + composition resources
+    //Person3 has composition resources as well as deduped data
     private static Person createPerson3() {
         return new Person()
                 .addName(new HumanName().setFamily("OConner").addGiven("Anthony"))
