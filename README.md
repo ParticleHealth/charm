@@ -3,7 +3,8 @@
 ## SMART on FHIR Python Client 4.0:
 
 ### setup:
-install SMART FHIR CLIENT directly from github for v4.0:
+install SMART FHIR CLIENT directly from github for v4.0: \n
+
 pip install git+https://github.com/smart-on-fhir/client-py.git
 
 ### usage:
