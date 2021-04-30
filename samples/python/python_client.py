@@ -1,6 +1,4 @@
 #PYTHON CLIENT 4.0 INSTALLATION AND SETUP
-#install SMART FHIR CLIENT directly from github for v4.0:
-#pip install git+https://github.com/smart-on-fhir/client-py.git
 import requests
 import time
 import argparse
@@ -30,22 +28,16 @@ args = parser.parse_args(sys.argv[1:])
 
 #Generate JWT using Authentication Endpoint:
 print('\n' + 'Generating JWT using Client ID and Client Secret Provided...')
-#use client id and client secret to generate jwt:
 client_id = args.client_id
 client_secret = args.client_secret
-#auth endpoint and headers for request
-url = 'https://sandbox.particlehealth.com/auth/'
+url = args.base_url + '/auth/'
 headers = {'client-id': client_id,
            'client-secret': client_secret
           }
-#make get request, save jwt
 r = requests.get(url, headers=headers)
 if r.status_code == 200:
     jwt = r.text
-    #print jwt
-    print('JWT: \n')
-    print('\t' + str(jwt))
-    print('\n')
+    print('JWT: \n' + '\t' + str(jwt) + '/n')
 else:
     print('Status Code: ' + str(r.status_code))
     print('Please Ensure your Client ID and Client Secret are Valid')
@@ -59,15 +51,12 @@ settings = {
     'api_base': args.base_url + '/R4/'
 }
 smart = client.FHIRClient(settings=settings)
-#set up oauth2 authentication:
 o_auth = auth.FHIROAuth2Auth()
-#set jwt as auth access_token
 o_auth.access_token = jwt
 o_auth.signed_headers(headers = {})
 #point client auth to our OAuth2 build
 smart.server.auth = o_auth
-print("Authentication Process Complete")
-print('\n')
+print("Authentication Process Complete" + '\n')
 
 
 
@@ -75,39 +64,31 @@ print('\n')
 #create person to post to FHIR server:
 print('Creating Person JSON to POST...')
 my_person = p.Person()
-#add gender
 my_person.gender = 'Male'
-#add name
 person_name = hn.HumanName()
 person_name.family = 'Klein'
 person_name.given = ['Quinton']
 my_person.name = [person_name]
-#add address
 person_address = add.Address()
 person_address.city = "Amesbury"
 person_address.line = ['629 Schuster Common']
 person_address.postalCode = '01913'
 person_address.state = 'MA'
 my_person.address = [person_address]
-#add Birthdate
 person_bday = fd.FHIRDate()
 person_bday.origval = '1967-10-20'
 my_person.birthDate = person_bday
-#add identifier
 person_ident = ident.Identifier()
 person_ident.type = cc.CodeableConcept()
 person_ident.type.text = 'SSN'
 person_ident.value = '123-45-6789'
 my_person.identifier = [person_ident]
-#add telecom
 person_contact = cp.ContactPoint()
 person_contact.system = 'phone'
 person_contact.value = '1-234-567-8910'
 my_person.telecom = [person_contact]
-#print results
 print('Person to POST: \n')
-print('\t' + str(my_person.as_json()))
-print('\n')
+print('\t' + str(my_person.as_json()) + '\n')
 
 
 
@@ -117,34 +98,26 @@ print('Posting Person to FHIR Server...')
 Person_Loaded = p.Person.create(my_person, smart.server)
 person_loaded_id = Person_Loaded["id"]
 print('Person ID returned from FHIR server: \n')
-print('\t' + str(person_loaded_id))
-print('\n')
+print('\t' + str(person_loaded_id) + '\n')
 
 #read uploaded person to ensure upload success:
 print('Checking Upload Success...')
 patient = p.Person.read(person_loaded_id, smart.server)
 print('Results from Reading Person Uploaded: \n')
-print('\t' + str(patient.as_json()))
-print('\n')
+print('\t' + str(patient.as_json()) + '\n')
 
 
 
 #POST QUERY FOR NEW PERSON WITH CLIENT:
 print("Initiating POST Query for Person...")
-#set test patient ID
 test_person_id = person_loaded_id
-#set path for person query relative to client api base url
 path = 'Person/' + test_person_id + "/$query"
-#set body data for POST Query
 data = { "resourceType": "Parameters", "parameter": [{ "name": "purpose", "valueString": "TREATMENT" }] }
-#send POST request via client
 post_response = smart.server.post_json(path, data)
 print('Status of Query for Person: \n')
-print('\t' + str(post_response))
-print('\n')
+print('\t' + str(post_response) + '\n')
 print('Body: \n')
-print('\t' + str(post_response.text))
-print('\n')
+print('\t' + str(post_response.text) + '\n')
 
 
 
@@ -168,7 +141,6 @@ def get_resources():
             if (i['relation']) == 'next':
                 next_page = True
                 next_endpoint = (i['url'][4:])
-                #initiate GET call and store returned load for new pages
                 composition_references = smart.server.request_json(next_endpoint)
             else:
                 next_page = False
@@ -219,7 +191,6 @@ def get_medications():
         medication_content = smart.server.request_json(i['fullUrl'][4:])
         med_responses.append(medication_content)
 
-    #print responses
     for i in med_responses:
         print(i)
         print('\n')
@@ -228,14 +199,10 @@ def get_medications():
 
 #GET QUERY FOR NEW PERSON:
 print('Initiating GET Query for Person...')
-#set test patient ID
 test_person_id = person_loaded_id
-#set path for person query relative to client api base url
 path = 'Person/' + test_person_id + "/$query"
-#set variables for timed loop:
 start_time = time.time()
 max_time = 900
-#send GET request via client
 get_response = None
 
 #initiate timed loop to check query status code
@@ -257,7 +224,6 @@ while True:
 
 #use results of get_response if successful to get contents and medications
 if get_response.status_code == 200:
-    #print result
     print('Status Code: \n')
     print('\t' + str(get_response.status_code))
     print('\n')
