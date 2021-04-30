@@ -17,10 +17,12 @@ import org.hl7.fhir.r4.model.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.awt.*;
 import java.io.FileWriter;
 import java.io.IOException;
 
 import java.util.*;
+import java.util.List;
 import java.util.stream.Collectors;
 
 public class SampleQuery {
@@ -32,8 +34,10 @@ public class SampleQuery {
 
     private static FhirContext fhirContext;
 
+
     public static void main(String[] args) throws IOException {
         ParseArguments(args);
+        //Generate the JWT to be used for calls to the FHIR server
         String jwt = authorize();
         if (jwt == null) {
             System.out.println("No JWT retrieved from auth endpoint");
@@ -62,27 +66,33 @@ public class SampleQuery {
         if (result == null || result != 200)
             return;
 
+
         //Once dedup is complete we won't need to handle pagination for composition resources
-        List<String> compositionResources = new ArrayList<>();
+        List<Bundle> compositionBundles = new ArrayList<>();
         Bundle bundlePage = client.search().byUrl("/Composition?person=" + personId).returnBundle(Bundle.class).execute();
-        bundlePage.getEntry().forEach(k -> compositionResources.add(k.getFullUrl()));
+        compositionBundles.add(bundlePage);
+
         while (bundlePage.getLink(Bundle.LINK_NEXT) != null) {
             bundlePage = client.loadPage().byUrl(host + bundlePage.getLink(Bundle.LINK_NEXT).getUrl()).andReturnBundle(Bundle.class).execute();
-            bundlePage.getEntry().forEach(k -> compositionResources.add(k.getFullUrl()));
+            compositionBundles.add(bundlePage);
         }
 
-        //Get all entries from the returned composition resources
-        List<String> resourceList = new ArrayList<>();
-        for (String compositionResourceUrl : compositionResources) {
-            Composition composition = client.read().resource(Composition.class).withUrl(compositionResourceUrl).execute();
-            for (Composition.SectionComponent section : composition.getSection()) {
-                resourceList.addAll(section.getEntry().stream().map(Reference::getReference).collect(Collectors.toList()));
+        //Quadruple nested for loop. Very ugly. We could do this with Java streams but that would greatly reduce code clarity
+        List<String> compositionResources = new ArrayList<>();
+        for (Bundle compositionBundle : compositionBundles) {
+            for (Bundle.BundleEntryComponent component : compositionBundle.getEntry()) {
+                Composition b = (Composition) component.getResource();
+                for (Composition.SectionComponent sectionComponent : b.getSection()) {
+                    for (Reference ref : sectionComponent.getEntry()) {
+                        compositionResources.add(ref.getReference());
+                    }
+                }
             }
         }
 
         //Read all entries, effectively $everything
         BundleBuilder builder = new BundleBuilder(fhirContext);
-        for (String url : resourceList) {
+        for (String url : compositionResources) {
             IBaseResource partial = client.read().resource(Bundle.class).withUrl(url).execute();
             builder.addCollectionEntry(partial);
         }
