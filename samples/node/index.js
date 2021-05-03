@@ -105,13 +105,45 @@ const getEverything = async (fhirClient, personId) => {
   console.log('************** Getting All Resources **************')
 
   const fileName = 'everything.json'
-  const promises = allResources.map((resourceType) =>
-    getResources(fhirClient, resourceType, personId)
+  // Get all available resources from Composition resource
+  const resourceType = 'Composition'
+  const compositionResourceResponse = await getResources(
+    fhirClient,
+    resourceType,
+    personId
+  )
+
+  const compositionResources = compositionResourceResponse.reduce(
+    (allResourceData, resourceData) => {
+      const sections = resourceData.section.reduce((allEntries, section) => {
+        const entries = section.entry
+          .filter((entry) => entry.reference)
+          .map((entry) => {
+            const [resourceType, id] = entry?.reference?.split('/')
+            return {
+              resourceType,
+              id,
+            }
+          })
+
+        return [...allEntries, ...entries]
+      }, [])
+
+      return [...allResourceData, ...sections]
+    },
+    []
+  )
+
+  const promises = compositionResources.map((compositionResource) =>
+    fhirClient.read({
+      resourceType: compositionResource.resourceType,
+      id: compositionResource.id,
+    })
   )
 
   const responses = await Promise.allSettled(promises)
   const finalResults = responses
-    .filter((result) => result.value.length > 1)
+    .filter((result) => result.value)
     .map((result) => result.value)
 
   fs.writeFileSync(fileName, JSON.stringify(finalResults), 'utf-8')
