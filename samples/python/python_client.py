@@ -19,14 +19,12 @@ import fhirclient.models.contactpoint as cp
 
 
 #USING AUTHENTICATION ENDPOINT TO GENERATE JWT
-#take passed in Client-ID and Client-Secret from command line variables and save
 parser = argparse.ArgumentParser()
 parser.add_argument("--base-url", type=str, required=True)
 parser.add_argument("--client-id", type=str, required=True)
 parser.add_argument("--client-secret", type=str, required=True)
 args = parser.parse_args(sys.argv[1:])
 
-#Generate JWT using Authentication Endpoint:
 print('\n' + 'Generating JWT using Client ID and Client Secret Provided...')
 client_id = args.client_id
 client_secret = args.client_secret
@@ -44,7 +42,6 @@ else:
     exit()
 
 #CONNECTING CLIENT TO R4 SERVER AND AUTHENTICATE WITH JWT
-#set up FHIRClient with FHIR R4 server endpoint:
 print('Authenticating with JWT...')
 settings = {
     'app_id': 'Particle',
@@ -61,7 +58,6 @@ print("Authentication Process Complete" + '\n')
 
 
 #CREATING NEW PERSON WITH CLIENT:
-#create person to post to FHIR server:
 print('Creating Person JSON to POST...')
 my_person = p.Person()
 my_person.gender = 'Male'
@@ -93,7 +89,6 @@ print('\t' + str(my_person.as_json()) + '\n')
 
 
 #POST NEW PERSON TO SERVER WITH CLIENT
-#upload person to FHIR R4 server and save returned ID:
 print('Posting Person to FHIR Server...')
 Person_Loaded = p.Person.create(my_person, smart.server)
 person_loaded_id = Person_Loaded["id"]
@@ -191,20 +186,15 @@ start_time = time.time()
 max_time = 900
 get_response = None
 
-#initiate timed loop to check query status code
 while True:
     elapsed_time = time.time() - start_time
     get_response = smart.server._get(path)
-
-    #if complete exit loop:
     if get_response.status_code == 200:
         print('The Query is Now Complete')
         break
-    #if past 15 min then exit loop due to time out:
     if elapsed_time > max_time:
         print('The Query has Timed Out after 15 Minutes')
         break
-    #check again after 30 seconds:
     print('The Query is Still Running...')
     time.sleep(30)
 
@@ -215,6 +205,5 @@ if get_response.status_code == 200:
     if get_response.json() is not None:
         get_resources()
         get_medications()
-#if not 200 print error message
 else:
     print("Status Code" + get_response.status_code)
