@@ -1,4 +1,4 @@
-#PYTHON CLIENT 4.0 INSTALLATION AND SETUP
+#import relevant packages
 import requests
 import time
 import argparse
@@ -123,43 +123,34 @@ print('\t' + str(post_response.text) + '\n')
 
 #SET UP FUNCTIONS FOR RESOURCE RETRIEVAL
 def get_resources():
-    next_page = True
+    #get all resource references from compositions, factor in pagination:
+    print('Getting Resource References from Compositions...' + '\n')
     url_ext = 'Composition?person=' + test_person_id
-    all_composition_refs = []
+    composition = smart.server.request_json(url_ext)
 
-    #get all compositions, factor in pagination:
-    print('Getting Compositions...' + '\n')
-    composition_references = smart.server.request_json(url_ext)
-    #loop through paginated responses
+    next_page = True
+    resource_references = []
     while next_page == True:
-        #loop through compositions, grab references
-        for i in composition_references['entry']:
-            all_composition_refs.append(i['fullUrl'])
+        for i in composition['entry']:
+            for j in i['resource']['section']:
+                for k in (j['entry']):
+                    resource_references.append(k['reference'])
 
         #grab next page endpoint
-        for i in composition_references['link']:
+        for i in composition['link']:
             if (i['relation']) == 'next':
                 next_page = True
                 next_endpoint = (i['url'][4:])
-                composition_references = smart.server.request_json(next_endpoint)
+                #initiate GET call and store returned load for new pages
+                composition = smart.server.request_json(next_endpoint)
             else:
                 next_page = False
-
-    #get resource references from compositions:
-    print('Getting All Resource References from Compositions...' + '\n')
-    resource_refs =[]
-    for i in all_composition_refs:
-        composition = smart.server.request_json(i[4:])
-        for j in composition['section']:
-            entry = j['entry']
-            for l in entry:
-                resource_refs.append(l['reference'])
 
     #get resource counts and contents from all resource references:
     print('Getting All Resource Content from Resource References...' + '\n')
     all_resource_content = []
     all_types = []
-    for i in resource_refs:
+    for i in resource_references:
         resource_content = smart.server.request_json(i)
         all_resource_content.append(resource_content)
         all_types.append(i.split('/')[0])
@@ -169,13 +160,10 @@ def get_resources():
     print(str(len(counter)) + ' unique resource types:')
     for i in counter:
         print("\t" + i + " - " + str(counter[i]) + ' resources')
-    print('\n')
 
-    print('Bundling Resource Content...')
+    print('\n' + 'Bundling Resource Content...' + '\n')
     for i in all_resource_content:
-        print(i)
-        print('\n')
-
+        print(str(i) + '\n')
 
 
 
@@ -184,16 +172,14 @@ def get_medications():
     print('Gathering Medication from the Past Year for Person...' + '\n')
     #set url with last year effective date parameter
     med_url = 'MedicationStatement?person=' + test_person_id + '&effective=gt2020-04-29T01:00:00'
-    med_responses = []
-    #loop through reference responses, call GET for reference and save contents
     med_refs = smart.server.request_json(med_url)
-    for i in med_refs['entry']:
-        medication_content = smart.server.request_json(i['fullUrl'][4:])
-        med_responses.append(medication_content)
 
-    for i in med_responses:
-        print(i)
-        print('\n')
+    medication_content = []
+    for i in med_refs['entry']:
+        medication_content.append(i['resource'])
+
+    for i in medication_content:
+        print(str(i) + '\n')
 
 
 
@@ -225,8 +211,7 @@ while True:
 #use results of get_response if successful to get contents and medications
 if get_response.status_code == 200:
     print('Status Code: \n')
-    print('\t' + str(get_response.status_code))
-    print('\n')
+    print('\t' + str(get_response.status_code) + '\n')
     if get_response.json() is not None:
         get_resources()
         get_medications()
