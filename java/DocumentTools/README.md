@@ -7,5 +7,5 @@ The latest PDF documentation can be found at: http://www.hl7.org/implement/stand
 
 /repo contains all of the MDHT dependencies required for producing and manipulating CCDA documents. These jars are not available on Maven so we packaged them with this project.
 
-script.py (http://github.com/nikita-volkov/install-to-local-repo) can be run to generate a local dependency repository for the MDHT dependencies whenever a new major version is released.
+If the MDHT jars need to be updated the following repo contains a script for generating the local repo. The script should be run from the project root with the jars in the /lib folder. (http://github.com/nikita-volkov/install-to-local-repo)
 
