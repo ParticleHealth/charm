@@ -1,11 +1,14 @@
 package com.particlehealth.tools.process;
 
 import com.particlehealth.tools.models.*;
+import org.apache.commons.text.StringEscapeUtils;
 import org.eclipse.mdht.uml.cda.*;
+import org.eclipse.mdht.uml.cda.util.CDAUtil;
 import org.eclipse.mdht.uml.hl7.datatypes.*;
 import org.eclipse.mdht.uml.hl7.vocab.*;
 import org.openhealthtools.mdht.uml.cda.consol.*;
 
+import java.io.ByteArrayOutputStream;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -13,9 +16,27 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 
-public class GenerateDocument {
+public class DocumentGenerator {
 
-    public ContinuityOfCareDocument2 createCCD(OrganizationMetadata orgMetadata, PatientData patientData) {
+    /*
+        When CDAUtil.save is run it escapes the HTML tags in the encounters.text
+        generateDocument wraps the creation of the document and unescapes the tags
+        Can be written to an stream and saved from here
+     */
+    public String generateDocument(OrganizationData orgData, PatientData patientData) {
+        ContinuityOfCareDocument2 doc = createCCD(orgData, patientData);
+        String unescapedCCD = "";
+        try {
+            ByteArrayOutputStream outStream = new ByteArrayOutputStream();
+            CDAUtil.save(doc, outStream);
+            unescapedCCD = StringEscapeUtils.unescapeXml(new String(outStream.toByteArray()));
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return unescapedCCD;
+    }
+
+    public ContinuityOfCareDocument2 createCCD(OrganizationData orgData, PatientData patientData) {
         //CreationTime to be used throughout the doc
         String creationTime = OffsetDateTime.ofInstant(Instant.now(), ZoneOffset.UTC).format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
         String firstEncounterTime = patientData.getFirstEncounterTime();
@@ -23,8 +44,8 @@ public class GenerateDocument {
         ContinuityOfCareDocument2 doc = ConsolFactory.eINSTANCE.createContinuityOfCareDocument2().init();
 
         initializeHeaders(doc, patientData.getPatientId(), creationTime);
-        initializeAuthor(doc, orgMetadata, creationTime);
-        initializeCustodian(doc, orgMetadata);
+        initializeAuthor(doc, orgData, creationTime);
+        initializeCustodian(doc, orgData);
         initializeDocumentationOf(doc, firstEncounterTime, creationTime);
         initializeRecordTarget(doc, patientData);
         initializeComponent(doc, patientData);
@@ -97,7 +118,7 @@ public class GenerateDocument {
 
     }
 
-    private void initializeAuthor(ContinuityOfCareDocument2 cda, OrganizationMetadata orgMetadata, String creationTime) {
+    private void initializeAuthor(ContinuityOfCareDocument2 cda, OrganizationData orgData, String creationTime) {
         Author author = CDAFactory.eINSTANCE.createAuthor();
         AssignedAuthor assignedAuthor = CDAFactory.eINSTANCE.createAssignedAuthor();
 
@@ -114,32 +135,32 @@ public class GenerateDocument {
 
         CE assigningAuthorCode = DatatypesFactory.eINSTANCE.createCE();
         assigningAuthorCode.setCodeSystem("2.16.840.1.113883.6.10.1");
-        String code = orgMetadata.getProviderTaxonomyCode();
+        String code = orgData.getProviderTaxonomyCode();
         String codeSystemName = "Healthcare Provider Taxonomy (HIPAA)";
         assigningAuthorCode.setCode(code);
         assigningAuthorCode.setCodeSystemName(codeSystemName);
         assignedAuthor.setCode(assigningAuthorCode);
 
-        assignedAuthor.getTelecoms().addAll(createTelecoms(orgMetadata.getEmail(), orgMetadata.getTelephone()));
-        assignedAuthor.setRepresentedOrganization(orgMetadata.createOrganization());
-        assignedAuthor.getAddrs().add(orgMetadata.getAddress().createAddress());
+        assignedAuthor.getTelecoms().addAll(createTelecoms(orgData.getEmail(), orgData.getTelephone()));
+        assignedAuthor.setRepresentedOrganization(orgData.createOrganization());
+        assignedAuthor.getAddrs().add(orgData.getAddress().createAddress());
 
         author.setAssignedAuthor(assignedAuthor);
         cda.getAuthors().add(author);
     }
 
-    private void initializeCustodian(ContinuityOfCareDocument2 ccdDocument, OrganizationMetadata orgMetadata) {
+    private void initializeCustodian(ContinuityOfCareDocument2 ccdDocument, OrganizationData orgData) {
         Custodian custodian = CDAFactory.eINSTANCE.createCustodian();
         AssignedCustodian assignedCustodian = CDAFactory.eINSTANCE.createAssignedCustodian();
         CustodianOrganization custodianOrganization = CDAFactory.eINSTANCE.createCustodianOrganization();
 
         ON oname = DatatypesFactory.eINSTANCE.createON();
-        oname.addText(orgMetadata.getName());
+        oname.addText(orgData.getName());
         custodianOrganization.setName(oname);
 
-        custodianOrganization.setAddr(orgMetadata.getAddress().createAddress());
+        custodianOrganization.setAddr(orgData.getAddress().createAddress());
         //CustodianOrganization only takes 1 TEL object, either email or telephone will be used. At least 1 is required
-        custodianOrganization.setTelecom(createTelecoms(orgMetadata.getEmail(), orgMetadata.getTelephone()).get(0));
+        custodianOrganization.setTelecom(createTelecoms(orgData.getEmail(), orgData.getTelephone()).get(0));
 
         //NPI Unknown root
         II npiId = DatatypesFactory.eINSTANCE.createII();
