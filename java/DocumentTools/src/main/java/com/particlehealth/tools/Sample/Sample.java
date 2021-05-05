@@ -5,7 +5,7 @@ import java.time.*;
 import java.util.*;
 
 import com.particlehealth.tools.models.*;
-import com.particlehealth.tools.process.GenerateDocument;
+import com.particlehealth.tools.process.DocumentGenerator;
 import org.apache.commons.text.StringEscapeUtils;
 import org.eclipse.emf.common.util.Diagnostic;
 import org.eclipse.mdht.uml.cda.util.CDAUtil;
@@ -17,8 +17,8 @@ public class Sample {
 
     public static void main(String[] args){
 
-        GenerateDocument generateDocument = new GenerateDocument();
-        ContinuityOfCareDocument2 doc = generateDocument.createCCD(createOrganization(), createPatientData());
+        DocumentGenerator documentGenerator = new DocumentGenerator();
+        ContinuityOfCareDocument2 doc = documentGenerator.createCCD(createOrganization(), createPatientData());
 
         ValidationResult result = new ValidationResult();
       //  CDAUtil.validate(doc, result);
@@ -54,19 +54,19 @@ public class Sample {
         }
     }
 
-    private static OrganizationMetadata createOrganization() {
-        OrganizationMetadata organizationMetadata = new OrganizationMetadata();
-        organizationMetadata.setEmail("fakeTesting@testing.fake");
-        organizationMetadata.setName("myFakeCompany");
-        organizationMetadata.setProviderTaxonomyCode("FakeCodeFromValueset");
-        organizationMetadata.setTelephone("1-234-567-8910");
+    private static OrganizationData createOrganization() {
+        OrganizationData organizationData = new OrganizationData();
+        organizationData.setEmail("fakeTesting@testing.fake");
+        organizationData.setName("myFakeCompany");
+        organizationData.setProviderTaxonomyCode("FakeCodeFromValueset");
+        organizationData.setTelephone("1-234-567-8910");
         Address address = new Address();
         address.setAddressCity("Long Island");
         address.setAddressState("WA");
         address.setPostalCode("12345");
         address.setAddressLines(Arrays.asList("11 Bowery St")); //At least one address line is required
-        organizationMetadata.setAddress(address);
-        return organizationMetadata;
+        organizationData.setAddress(address);
+        return organizationData;
     }
 
     private static PatientData createPatientData() {

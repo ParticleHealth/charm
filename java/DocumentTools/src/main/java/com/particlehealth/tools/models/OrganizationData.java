@@ -8,7 +8,7 @@ import org.eclipse.mdht.uml.hl7.datatypes.DatatypesFactory;
 import org.eclipse.mdht.uml.hl7.datatypes.ON;
 
 @Getter @Setter
-public class OrganizationMetadata {
+public class OrganizationData {
 
     String name;
     String npi;
