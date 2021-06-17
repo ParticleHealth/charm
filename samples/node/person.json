@@ -1,0 +1,37 @@
+{
+  "resourceType": "Person",
+  "identifier": [
+    {
+      "type": {
+        "text": "ssn"
+      },
+      "value": "123-45-6789"
+    }
+  ],
+  "name": [
+    {
+      "family": "Klein",
+      "given": ["Quinton"]
+    }
+  ],
+  "telecom": [
+    {
+      "system": "phone",
+      "value": "1-234-567-8910"
+    },
+    {
+      "system": "email",
+      "value": "Quinton@doe.com"
+    }
+  ],
+  "gender": "Male",
+  "birthDate": "1967-10-20",
+  "address": [
+    {
+      "line": ["629 Schuster Common"],
+      "city": "Amesbury",
+      "state": "MA",
+      "postalCode": "01913"
+    }
+  ]
+}
