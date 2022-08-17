@@ -1,11 +1,10 @@
 #!/usr/bin/env node
 const fetch = require('cross-fetch')
 const Client = require('fhir-kit-client')
-const personJson = require('./person.json')
-const allResources = require('./allResources.json')
+const patientJson = require('./patient.json')
 const fs = require('fs')
 const yargs = require('yargs/yargs')
-const {hideBin} = require('yargs/helpers')
+const { hideBin } = require('yargs/helpers')
 const argv = yargs(hideBin(process.argv)).argv
 
 const FHIR_VERSION = 'R4'
@@ -15,6 +14,7 @@ const URL =
   `https://sandbox.particlehealth.com/${FHIR_VERSION}`
 
 const getToken = async () => {
+  console.log('\n========= Retrieving Authentication Token =========')
   const response = await fetch(`${AUTH_URL}/auth`, {
     method: 'GET',
     headers: {
@@ -24,72 +24,72 @@ const getToken = async () => {
   })
 
   if (!response.ok) {
-    console.error(`error with token request`, response.status)
+    console.error(`Failed to retrieve authentication token.`, response.status)
     return
   }
 
+  console.log('Token is ready.\n')
   return await response.text()
 }
 
-const setUpPerson = async (fhirClient) => {
-  // Create the person
+const setUpPatient = async (fhirClient) => {
+  console.log('========= Setting Up Patient =========')
+  // Create the patient
   const fhirClientCreateRes = await fhirClient.create({
-    resourceType: '/Person',
-    body: JSON.stringify(personJson),
+    resourceType: 'Patient',
+    body: JSON.stringify(patientJson),
   })
 
   // Setup Query
   await fhirClient.operation({
-    resourceType: 'Person',
+    resourceType: 'Patient',
     name: '$query',
     id: fhirClientCreateRes.id,
     input: {
       resourceType: 'Parameters',
-      parameter: [{name: 'purpose', valueString: 'TREATMENT'}],
+      parameter: [{ name: 'purpose', valueString: 'TREATMENT' }],
     },
   })
 
   let status, queryResponse
-  let progress = 'STARTED'
+  console.log("Waiting for query to complete...")
   while (status !== 200) {
     try {
       queryResponse = await fhirClient.operation({
-        resourceType: 'Person',
+        resourceType: 'Patient',
         name: '$query',
         id: fhirClientCreateRes.id,
         method: 'get',
       })
-      const {response} = Client.httpFor(queryResponse)
 
+      const { response } = Client.httpFor(queryResponse)
       status = response.status
-      progress = response.headers.get('x-progress')
 
-      console.log(
-        `waiting for query to complete... progress=${progress} status=${status}`
-      )
     } catch (error) {
-      console.error('error with waiting on status', error)
-      throw new Error(`error with waiting on status ${error}`)
+      console.error('Query failed to complete.', error)
+      throw new Error(`Error with waiting on status ${error}`)
     }
   }
-
-  return {personId: fhirClientCreateRes.id, queryResponse}
+  console.log('Patient is ready.\n')
+  return { patientId: fhirClientCreateRes.id, queryResponse }
 }
 
 const getResources = async (
   fhirClient,
   resourceType,
-  personId,
+  patientId,
   searchParams = {}
 ) => {
-  console.log(`========= Fetching ${resourceType} =========`)
+  console.log(`Fetching ${resourceType}(s)...`)
   const searchResponse = await fhirClient.search({
     resourceType,
     searchParams: {
-      id: personId,
+      patient: patientId,
       ...searchParams,
     },
   })
+
+  if (searchResponse.total == 0) return null
 
   const promises = searchResponse.entry.map((entryData) =>
     fhirClient.read({
@@ -101,118 +101,98 @@ const getResources = async (
   return await Promise.all(promises)
 }
 
-const getEverything = async (fhirClient, personId) => {
-  console.log('************** Getting All Resources **************')
+const patientEverything = async (
+  fhirClient,
+  patientId
+) => {
+  console.log(`Fetching all Resources for the patient...`)
+  const patientEverythingResponse = await fhirClient.operation({
+    resourceType: 'Patient',
+    name: '$everything',
+    id: patientId,
+    method: 'get',
+  })
 
-  const fileName = 'everything.json'
-  // Get all available resources from Composition resource
-  const resourceType = 'Composition'
-  const compositionResourceResponse = await getResources(
-    fhirClient,
-    resourceType,
-    personId
-  )
+  if (patientEverythingResponse.total == 0) return null
 
-  const compositionResources = compositionResourceResponse.reduce(
-    (allResourceData, resourceData) => {
-      const sections = resourceData.section.reduce((allEntries, section) => {
-        const entries = section.entry
-          .filter((entry) => entry.reference)
-          .map((entry) => {
-            const [resourceType, id] = entry?.reference?.split('/')
-            return {
-              resourceType,
-              id,
-            }
-          })
-
-        return [...allEntries, ...entries]
-      }, [])
-
-      return [...allResourceData, ...sections]
-    },
-    []
-  )
-
-  const promises = compositionResources.map((compositionResource) =>
+  const promises = patientEverythingResponse.entry.map((entryData) =>
     fhirClient.read({
-      resourceType: compositionResource.resourceType,
-      id: compositionResource.id,
+      resourceType: entryData.resource.resourceType,
+      id: entryData.resource.id,
     })
   )
 
-  const responses = await Promise.allSettled(promises)
-  const finalResults = responses
-    .filter((result) => result.value)
-    .map((result) => result.value)
-
-  fs.writeFileSync(fileName, JSON.stringify(finalResults), 'utf-8')
-
-  console.log(`====== ${fileName} file written ======`)
+  return await Promise.all(promises)
 }
 
-;(async () => {
-  try {
-    const token = await getToken()
-    const fhirClient = new Client({
-      baseUrl: URL,
-      customHeaders: {
-        'Content-Type': 'application/json',
-        Authorization: token,
-      },
-    })
+  ; (async () => {
+    try {
+      /** Authentication **/
+      const token = await getToken()
+      const fhirClient = new Client({
+        baseUrl: URL,
+        customHeaders: {
+          'Content-Type': 'application/json',
+          Authorization: token,
+        },
+      })
 
-    // ------------------------- TOKEN IS READY ------------------------- //
+      /** Patient Setup **/
+      const { patientId } = await setUpPatient(fhirClient)
 
-    const {personId} = await setUpPerson(fhirClient)
-
-    console.log('PATIENT IS READY!!!!')
-
-    // ------------------------- PATIENT IS READY ------------------------- //
-
-    // ************** Get Resources **************
-    console.log('************** Getting Individual Resource **************')
-
-    const resourceType = 'Encounter'
-    const fileName = `all${resourceType}s.json`
-    const resource = await getResources(fhirClient, resourceType, personId)
-    fs.writeFileSync(fileName, JSON.stringify(resource), 'utf-8')
-
-    console.log(`=============== ${fileName} WRITTEN ===============`)
-
-    console.log(
-      '************** Getting MedicationStatement Resources from the last month **************'
-    )
-
-    const today = new Date()
-    const lastMonth = new Date(
-      today.getFullYear(),
-      today.getMonth() - 1,
-      today.getDate()
-    ).toISOString()
-    const filteredResource = 'MedicationStatement'
-    const filteredResourceFileName = `${filteredResource}-filtered.json`
-    const filteredResourceResults = await getResources(
-      fhirClient,
-      filteredResource,
-      personId,
-      {
-        date: `gt${lastMonth}`,
+      /** Example 1: Retrieve an individual Resource **/
+      console.log('========= Example 1: Retrieve all Encounter Resources =========')
+      const resourceType = 'Encounter'
+      const fileName = `all${resourceType}s.json`
+      const resources = await getResources(fhirClient, resourceType, patientId)
+      if (resources != null) {
+        fs.writeFileSync(fileName, JSON.stringify(resources), 'utf-8')
+        console.log(`Success! See generated file: ${fileName}\n`)
+      } else {
+        console.log(`No resources found.\n`)
       }
-    )
-    fs.writeFileSync(
-      filteredResourceFileName,
-      JSON.stringify(filteredResourceResults),
-      'utf-8'
-    )
 
-    console.log(
-      `=============== ${filteredResourceFileName} WRITTEN ===============`
-    )
+      /** Example 2: Retrieve a filtered Resource **/
+      console.log('========= Example 2: Retrieve Encounter Resources from the last three years =========')
+      const today = new Date()
+      const lastMonth = new Date(
+        today.getFullYear() - 3,
+        today.getMonth(),
+        today.getDate()
+      ).toISOString()
+      const filteredResource = 'Encounter'
+      const filteredResourceFileName = `filtered${filteredResource}s.json`
+      const filteredResourceResults = await getResources(
+        fhirClient,
+        filteredResource,
+        patientId,
+        {
+          date: `gt${lastMonth}`,
+        }
+      )
+      if (filteredResourceResults != null) {
+        fs.writeFileSync(
+          filteredResourceFileName,
+          JSON.stringify(filteredResourceResults),
+          'utf-8'
+        )
+        console.log(`Success! See generated file: ${filteredResourceFileName}\n`)
+      } else {
+        console.log("No resources found.\n")
+      }
 
-    await getEverything(fhirClient, personId)
-  } catch (err) {
-    console.error('Uh ohhhhhh, somethings wrong')
-    console.error(err)
-  }
-})()
+      /** Example 3. Retrieve all Resources for a patient **/
+      console.log('========= Example 3: Retrieve all Resources for a patient =========')
+      const everythingFileName = `patientEverything.json`
+      const everythingResource = await patientEverything(fhirClient, patientId)
+      if (everythingResource != null) {
+        fs.writeFileSync(everythingFileName, JSON.stringify(everythingResource), 'utf-8')
+        console.log(`Success! See generated file: ${everythingFileName}\n`)
+      } else {
+        console.log(`No resources found.\n`)
+      }
+
+    } catch (err) {
+      console.error(err)
+    }
+  })()

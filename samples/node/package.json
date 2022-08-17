@@ -13,8 +13,8 @@
     "npm": "6.14.4"
   },
   "dependencies": {
-    "cross-fetch": "3.1.4",
-    "fhir-kit-client": "1.6.5",
-    "yargs": "16.2.0"
+    "cross-fetch": "3.1.5",
+    "fhir-kit-client": "1.9.1",
+    "yargs": "17.5.1"
   }
 }
