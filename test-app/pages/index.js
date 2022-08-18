@@ -80,6 +80,7 @@ export default function Home() {
           "Encounter",
           personId
         );
+        console.log(encounterResources);
         setEncounterResources(encounterResources);
       } catch (e) {
         console.log(e);
@@ -198,7 +199,7 @@ export default function Home() {
               return (
                 <div key={i}>
                   <div>Date: {elt?.resource.period?.start}</div>
-                  <div>Description: {elt?.resource?.type[0]?.text}</div>
+                  <div>Description: {elt?.resource?.type?.[0]?.text}</div>
                   <br />
                   <br />
                 </div>
