@@ -68,9 +68,9 @@ export const initiateQuery = async (fhirClient, personData) => {
       status = response.status;
       progress = response.headers.get("x-progress");
 
-      console.log(
-        `waiting for query to complete progress=${progress} status=${status}`
-      );
+      // console.log(
+      //   `waiting for query to complete progress=${progress} status=${status}`
+      // );
     } catch (error) {
       console.error("error with waiting on status", error);
       throw new Error(`error with waiting on status ${error}`);

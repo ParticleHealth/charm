@@ -80,10 +80,9 @@ export default function Home() {
           "Encounter",
           personId
         );
-        console.log(encounterResources);
         setEncounterResources(encounterResources);
       } catch (e) {
-        console.log(e);
+        console.error(e);
         setStatus("error with person query :(");
       }
     };
