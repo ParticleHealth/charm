@@ -82,7 +82,7 @@ export default function Home() {
         );
         setEncounterResources(encounterResources);
       } catch (e) {
-        console.log(e);
+        console.error(e);
         setStatus("error with person query :(");
       }
     };
@@ -198,7 +198,7 @@ export default function Home() {
               return (
                 <div key={i}>
                   <div>Date: {elt?.resource.period?.start}</div>
-                  <div>Description: {elt?.resource?.type[0]?.text}</div>
+                  <div>Description: {elt?.resource?.type?.[0]?.text}</div>
                   <br />
                   <br />
                 </div>
