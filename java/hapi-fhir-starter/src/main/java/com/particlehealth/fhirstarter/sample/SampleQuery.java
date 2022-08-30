@@ -6,20 +6,16 @@ import ca.uhn.fhir.rest.api.MethodOutcome;
 import ca.uhn.fhir.rest.client.api.IGenericClient;
 import ca.uhn.fhir.rest.client.interceptor.BearerTokenAuthInterceptor;
 import ca.uhn.fhir.rest.client.interceptor.LoggingInterceptor;
-import ca.uhn.fhir.util.BundleBuilder;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
 import org.apache.commons.cli.*;
-import org.hl7.fhir.instance.model.api.IBaseBundle;
-import org.hl7.fhir.instance.model.api.IBaseResource;
 import org.hl7.fhir.r4.model.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.util.*;
-import java.util.List;
 
 public class SampleQuery {
     private static final Logger logger = LoggerFactory.getLogger(SampleQuery.class);
@@ -43,11 +39,11 @@ public class SampleQuery {
         IGenericClient client = getClient(jwt);
 
         // Create the demographics.
-        Person person = createPerson2();
+        Patient patient = createPatient2();
 
-        // Register the Person.
-        MethodOutcome outcome = client.create().resource(person).prettyPrint().encodedJson().accept("application/fhir+json").execute();
-        logger.info("created person with id: " + outcome.getId().getIdPart());
+        // Register the Patient.
+        MethodOutcome outcome = client.create().resource(patient).prettyPrint().encodedJson().accept("application/fhir+json").execute();
+        logger.info("created patient with id: " + outcome.getId().getIdPart());
 
         // Query Particle Health connected networks.
         Parameters inParams = new Parameters();
@@ -55,51 +51,28 @@ public class SampleQuery {
         Parameters outParams = client.operation().onInstance(outcome.getId()).named("$query").withParameters(inParams).execute();
 
         String queryURL = outParams.getParameter("status").primitiveValue();
-        String personId = outcome.getId().getIdPart();
+        String patientId = outcome.getId().getIdPart();
 
         //Check if result is a 200, if so we're good to query for resources
-        Integer result = getPersonQuery(jwt, queryURL);
+        Integer result = getPatientQuery(jwt, queryURL);
         if (result == null || result != 200)
             return;
 
+        //patient-everything
+        Bundle bundlePage = client.search().byUrl(host + "/R4/Patient/" + patientId + "/$everything").returnBundle(Bundle.class).execute();
 
-        //Once dedup is complete we won't need to handle pagination for composition resources
-        List<Bundle> compositionBundles = new ArrayList<>();
-        Bundle bundlePage = client.search().byUrl("/Composition?person=" + personId).returnBundle(Bundle.class).execute();
-        compositionBundles.add(bundlePage);
-
-        while (bundlePage.getLink(Bundle.LINK_NEXT) != null) {
-            bundlePage = client.loadPage().byUrl(host + bundlePage.getLink(Bundle.LINK_NEXT).getUrl()).andReturnBundle(Bundle.class).execute();
-            compositionBundles.add(bundlePage);
-        }
-
-        //Quadruple nested for loop. Very ugly. We could do this with Java streams but that would greatly reduce code clarity
-        List<String> compositionResources = new ArrayList<>();
-        for (Bundle compositionBundle : compositionBundles) {
-            for (Bundle.BundleEntryComponent component : compositionBundle.getEntry()) {
-                Composition b = (Composition) component.getResource();
-                for (Composition.SectionComponent sectionComponent : b.getSection()) {
-                    for (Reference ref : sectionComponent.getEntry()) {
-                        compositionResources.add(ref.getReference());
-                    }
-                }
-            }
-        }
-
-        //Read all entries, effectively $everything
-        BundleBuilder builder = new BundleBuilder(fhirContext);
-        for (String url : compositionResources) {
-            IBaseResource partial = client.read().resource(Bundle.class).withUrl(url).execute();
-            builder.addCollectionEntry(partial);
-        }
-
-        //Using the accumulated builder, compile the masterBundle and output it so a file.
+        // write bundle to file
         IParser parser = fhirContext.newJsonParser();
         parser.setPrettyPrint(true);
+        FileWriter writer = new FileWriter(patientId + "_everything.json");
+        parser.encodeResourceToWriter(bundlePage, writer);
 
-        IBaseBundle masterBundle = builder.getBundle();
-        FileWriter writer = new FileWriter(personId + "_bundle.json");
-        parser.encodeResourceToWriter(masterBundle, writer);
+        // iterate through all pages, writing each bundle to file
+        while (bundlePage.getLink(Bundle.LINK_NEXT) != null) {
+            bundlePage = client.search().byUrl(bundlePage.getLink(Bundle.LINK_NEXT).getUrl()).returnBundle(Bundle.class).execute();
+            parser.encodeResourceToWriter(bundlePage, writer);
+        }
+
         writer.close();
     }
 
@@ -118,10 +91,9 @@ public class SampleQuery {
         }
     }
 
-    private static Integer getPersonQuery(String jwt, String url) {
+    private static Integer getPatientQuery(String jwt, String url) {
         OkHttpClient client = new OkHttpClient();
-        url = url.replace("R4/","");
-        Request req = new Request.Builder().url(host + "/R4" + url).addHeader("Authorization", jwt).build();
+        Request req = new Request.Builder().url(url).addHeader("Authorization", jwt).build();
 
         Response resp = null;
         try {
@@ -175,6 +147,7 @@ public class SampleQuery {
     private static IGenericClient getClient(String jwt) {
         //This is an expensive operation. Set this to be a singleton object in an actual application
         fhirContext = FhirContext.forR4();
+        fhirContext.getRestfulClientFactory().setSocketTimeout(40*1000);
       //  fhirContext.setPerformanceOptions(PerformanceOptionsEnum.DEFERRED_MODEL_SCANNING);
         IGenericClient client = fhirContext.newRestfulGenericClient(host + "/R4");
         LoggingInterceptor loggingInterceptor = new LoggingInterceptor();
@@ -192,8 +165,8 @@ public class SampleQuery {
 
     // ~An important note about the old Java date package~
     // The Month field starts with January at 0, so subtract 1 from the calendar month when inputting the data
-    private static Person createPerson() {
-        return new Person()
+    private static Patient createPatient() {
+        return new Patient()
                 .addName(new HumanName().setFamily("Aufderhar").addGiven("Federico"))
                 .setGender(Enumerations.AdministrativeGender.MALE)
                 .addAddress(new Address()
@@ -204,9 +177,9 @@ public class SampleQuery {
                 .setBirthDate(new Date(81, 6, 12));
     }
 
-    //Person2 has composition resources
-    private static Person createPerson2() {
-        return new Person()
+    //Patient2 has composition resources
+    private static Patient createPatient2() {
+        return new Patient()
                 .addName(new HumanName().setFamily("Klein").addGiven("Quinton"))
                 .setGender(Enumerations.AdministrativeGender.MALE)
                 .addAddress(new Address()
@@ -217,9 +190,9 @@ public class SampleQuery {
                 .setBirthDate(new Date(67, 9, 20));
     }
 
-    //Person3 has composition resources as well as deduped data
-    private static Person createPerson3() {
-        return new Person()
+    //Patient3 has composition resources as well as deduped data
+    private static Patient createPatient3() {
+        return new Patient()
                 .addName(new HumanName().setFamily("OConner").addGiven("Anthony"))
                 .setGender(Enumerations.AdministrativeGender.MALE)
                 .addAddress(new Address()

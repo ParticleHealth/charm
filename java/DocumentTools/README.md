@@ -1,6 +1,6 @@
 Barebones tool for creating CCDA Documents using the MDHT Project - https://github.com/mdht/mdht-models
 
-This project generates documents accoreding to the November 2020 version 2.1 C-CDA Implementation Guide
+This project generates documents according to the November 2020 version 2.1 C-CDA Implementation Guide
 
 References for generating CCDA - http://www.hl7.org/ccdasearch/index.html
 The latest PDF documentation can be found at: http://www.hl7.org/implement/standards/product_brief.cfm?product_id=492
