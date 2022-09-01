@@ -1,8 +1,0 @@
-{
-  "runtimeOptions": {
-    "additionalProbingPaths": [
-      "/Users/edem/.dotnet/store/|arch|/|tfm|",
-      "/Users/edem/.nuget/packages"
-    ]
-  }
-}
