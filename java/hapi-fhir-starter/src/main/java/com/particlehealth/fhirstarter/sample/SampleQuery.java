@@ -6,10 +6,12 @@ import ca.uhn.fhir.rest.api.MethodOutcome;
 import ca.uhn.fhir.rest.client.api.IGenericClient;
 import ca.uhn.fhir.rest.client.interceptor.BearerTokenAuthInterceptor;
 import ca.uhn.fhir.rest.client.interceptor.LoggingInterceptor;
+import ca.uhn.fhir.util.BundleBuilder;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
 import org.apache.commons.cli.*;
+import org.hl7.fhir.instance.model.api.IBaseBundle;
 import org.hl7.fhir.r4.model.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -61,19 +63,48 @@ public class SampleQuery {
         //patient-everything
         Bundle bundlePage = client.search().byUrl(host + "/R4/Patient/" + patientId + "/$everything").returnBundle(Bundle.class).execute();
 
+        // Build patient-everything bundle
+        BundleBuilder builder = new BundleBuilder(fhirContext);
+        buildBundle(builder, bundlePage);
+
+        // iterate through all pages, writing each bundle to builder
+        while (bundlePage.getLink(Bundle.LINK_NEXT) != null) {
+            bundlePage = client.search().byUrl(bundlePage.getLink(Bundle.LINK_NEXT).getUrl()).returnBundle(Bundle.class).execute();
+            buildBundle(builder, bundlePage);
+        }
+
         // write bundle to file
         IParser parser = fhirContext.newJsonParser();
         parser.setPrettyPrint(true);
         FileWriter writer = new FileWriter(patientId + "_everything.json");
-        parser.encodeResourceToWriter(bundlePage, writer);
 
-        // iterate through all pages, writing each bundle to file
-        while (bundlePage.getLink(Bundle.LINK_NEXT) != null) {
+        IBaseBundle masterBundle = builder.getBundle();
+        parser.encodeResourceToWriter(masterBundle, writer);
+        writer.close();
+
+        // retrieve specific resource - MedicationStatement
+        bundlePage = client.search().byUrl(host + "/R4/MedicationStatement?patient=" + patientId).returnBundle(Bundle.class).execute();
+
+        // Build MedicationStatement bundle
+        BundleBuilder medicationBuilder = new BundleBuilder(fhirContext);
+        FileWriter medicationWriter = new FileWriter(patientId + "_MedicationStatement.json");
+        buildBundle(medicationBuilder, bundlePage);
+        while(bundlePage.getLink(Bundle.LINK_NEXT) != null){
             bundlePage = client.search().byUrl(bundlePage.getLink(Bundle.LINK_NEXT).getUrl()).returnBundle(Bundle.class).execute();
-            parser.encodeResourceToWriter(bundlePage, writer);
+            buildBundle(medicationBuilder, bundlePage);
         }
 
-        writer.close();
+        // write bundle to file
+        IBaseBundle masterMedicationBundle = medicationBuilder.getBundle();
+        parser.encodeResourceToWriter(masterMedicationBundle, medicationWriter);
+        medicationWriter.close();
+    }
+
+    private static void buildBundle (BundleBuilder builder, Bundle bundle) {
+        for(Bundle.BundleEntryComponent component : bundle.getEntry()){
+            builder.addCollectionEntry(component.getResource());
+        }
+        //return builder;
     }
 
     private static String authorize() {
