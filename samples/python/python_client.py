@@ -90,13 +90,6 @@ def post_query(smart_client, patient_id):
     return post_response
 
 
-def get_query_status():
-    status_url = "https://sandbox.particlehealth.com/R4/Patient/{patient_id}/$query"
-    headers = {"Authorization": "JWT"}
-    r = requests.get(status_url, headers=headers)
-    print(r.json())
-
-
 # set up functions for resource retrieval
 # TODO replace with patient$everything
 def get_patient_everything(patient_id):
