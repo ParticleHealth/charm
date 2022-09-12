@@ -1,1 +1,1 @@
-pip install fhirclient
+fhirclient==4.0.0
