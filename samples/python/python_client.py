@@ -134,7 +134,6 @@ def wait_for_query_status(smart_client, patient_id):
 
 if __name__ == "__main__":
 
-    # USING AUTHENTICATION ENDPOINT TO GENERATE JWT
     parser = argparse.ArgumentParser()
     parser.add_argument("--base-url", type=str, required=True)
     parser.add_argument("--client-id", type=str, required=True)
