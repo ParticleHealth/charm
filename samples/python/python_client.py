@@ -6,7 +6,15 @@ import sys
 from collections import Counter
 from fhirclient import client
 from fhirclient import auth
-from fhirclient import models
+from fhirclient.models import (
+    patient,
+    humanname,
+    address,
+    fhirdate,
+    identifier,
+    codeableconcept,
+    contactpoint,
+)
 
 
 def get_auth(client_id, client_secret, base_url) -> str:
@@ -35,52 +43,52 @@ def connect_to_server(base_url: str, jwt: str):
     return smart_client
 
 
-def create_person():
+def create_patient():
     """make example fhir person"""
-    example_person = models.person.Person()
-    example_person.gender = "Male"
+    example_patient = patient.Patient()
+    example_patient.gender = "Male"
 
-    person_name = models.humanname.HumanName()
+    person_name = humanname.HumanName()
     person_name.family = "Klein"
     person_name.given = ["Quinton"]
-    example_person.name = [person_name]
+    example_patient.name = [person_name]
 
-    person_address = models.address.Address()
+    person_address = address.Address()
     person_address.city = "Amesbury"
     person_address.line = ["629 Schuster Common"]
     person_address.postalCode = "01913"
     person_address.state = "MA"
-    example_person.address = [person_address]
+    example_patient.address = [person_address]
 
-    person_bday = models.fhirdate.FHIRDate()
+    person_bday = fhirdate.FHIRDate()
     person_bday.origval = "1967-10-20"
-    example_person.birthDate = person_bday
+    example_patient.birthDate = person_bday
 
-    person_ident = models.identifier.Identifier()
-    person_ident.type = models.codeableconcept.CodeableConcept()
+    person_ident = identifier.Identifier()
+    person_ident.type = codeableconcept.CodeableConcept()
     person_ident.type.text = "SSN"
     person_ident.value = "123-45-6789"
-    example_person.identifier = [person_ident]
+    example_patient.identifier = [person_ident]
 
-    person_contact = models.contactpoint.ContactPoint()
+    person_contact = contactpoint.ContactPoint()
     person_contact.system = "phone"
     person_contact.value = "1-234-567-8910"
-    example_person.telecom = [person_contact]
+    example_patient.telecom = [person_contact]
 
-    return example_person
+    return example_patient
 
 
-def post_person_to_server(example_person, smart_client):
+def post_patient_to_server(example_patient, smart_client):
     # post new person to server with client
-    person_loaded = models.person.Person.create(example_person, smart_client.server)
-    patient_id = person_loaded["id"]
+    patient_loaded = example_patient.create(smart_client.server)
+    patient_id = patient_loaded["id"]
 
     return patient_id
 
 
 def post_query(smart_client, patient_id):
     # post query for new person with client:
-    path = "Patient/" + patient_id + "/$query"
+    path = f"Patient/{patient_id}/$query"
     data = {
         "resourceType": "Parameters",
         "parameter": [{"name": "purpose", "valueString": "TREATMENT"}],
@@ -92,7 +100,7 @@ def post_query(smart_client, patient_id):
 
 # set up functions for resource retrieval
 # TODO replace with patient$everything
-def get_patient_everything(patient_id):
+def get_patient_everything(patient_id, smart_client):
     everything_url = f"Patient/{patient_id}/$everything"
     everything_refs = smart_client.server.request_json(everything_url)
 
@@ -106,7 +114,7 @@ def get_patient_everything(patient_id):
 # get medications for test patient from past year:
 def get_medications(patient_id, smart_client):
     med_url = (
-        "MedicationStatement?person=" + patient_id + "&effective=gt2020-04-29T01:00:00"
+        "MedicationStatement?patient=" + patient_id + "&effective=gt2020-04-29T01:00:00"
     )
     med_refs = smart_client.server.request_json(med_url)
 
@@ -118,7 +126,8 @@ def get_medications(patient_id, smart_client):
 
 
 def wait_for_query_status(smart_client, patient_id):
-    path = f"Person/{patient_id}/$query"
+    path = f"Patient/{patient_id}/$query"
+    get_response = smart_client.server._get(path)
     start_time = time.time()
     max_time = 900
     get_response = None
@@ -127,6 +136,7 @@ def wait_for_query_status(smart_client, patient_id):
         get_response = smart_client.server._get(path)
         if get_response.status_code == 200:
             return
+        print(get_response.status_code)
         time.sleep(30)
 
     raise Exception("The Query has Timed Out after 15 Minutes")
@@ -143,8 +153,10 @@ if __name__ == "__main__":
 
     jwt = get_auth(args.client_id, args.client_secret, args.base_url)
     smart_client = connect_to_server(args.base_url, jwt)
-    person = create_person()
-    patient_id = post_person_to_server(person, smart_client)
+    patient = create_patient()
+    patient_id = post_patient_to_server(patient, smart_client)
+
+    post_query(smart_client, patient_id)
     wait_for_query_status(smart_client, patient_id)
 
     patient_everything = get_patient_everything(patient_id, smart_client)
