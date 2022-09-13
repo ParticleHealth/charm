@@ -113,9 +113,7 @@ def get_patient_everything(patient_id, smart_client):
 
 # get medications for test patient from past year:
 def get_medications(patient_id, smart_client):
-    med_url = (
-        "MedicationStatement?patient=" + patient_id + "&effective=gt2020-04-29T01:00:00"
-    )
+    med_url = f"MedicationStatement?patient={patient_id}"
     med_refs = smart_client.server.request_json(med_url)
 
     medication_content = []
