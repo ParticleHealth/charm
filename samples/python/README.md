@@ -16,5 +16,7 @@ poetry update && poetry install
 ### Usage:
 python python_client.py --client-id $ID --client-secret $SECRET --base-url $HOST
 
+Example Base URL: 'https://sandbox.particlehealth.com'
+
 ### Documentation for Client:
 http://docs.smarthealthit.org/client-py/index.html
