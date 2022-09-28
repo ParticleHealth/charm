@@ -18,6 +18,7 @@ from fhirclient.models import (
 
 
 def get_auth(client_id, client_secret, base_url) -> str:
+    """Generate JWT using client id and client secret provided from Particle Health"""
     url = base_url + "/auth/"
     headers = {"client-id": client_id, "client-secret": client_secret}
     r = requests.get(url, headers=headers)
@@ -44,7 +45,7 @@ def connect_to_server(base_url: str, jwt: str):
 
 
 def create_patient():
-    """make example fhir person"""
+    """make example fhir patient"""
     example_patient = patient.Patient()
     example_patient.gender = "Male"
 
@@ -79,7 +80,7 @@ def create_patient():
 
 
 def post_patient_to_server(example_patient, smart_client):
-    # post new person to server with client
+    """POST the created patient to the FHIR server"""
     patient_loaded = example_patient.create(smart_client.server)
     patient_id = patient_loaded["id"]
 
@@ -87,7 +88,7 @@ def post_patient_to_server(example_patient, smart_client):
 
 
 def post_query(smart_client, patient_id):
-    # post query for new person with client:
+    """POST a query to the Particle Network for the newly generated Patient"""
     path = f"Patient/{patient_id}/$query"
     data = {
         "resourceType": "Parameters",
@@ -98,22 +99,30 @@ def post_query(smart_client, patient_id):
     return post_response
 
 
-# set up functions for resource retrieval
-# TODO replace with patient$everything
-def get_patient_everything(patient_id, smart_client):
+def check_if_more_pages(json_response):
+    """Helper function to check if there is a next page link in the response"""
+    for i in json_response['link']:
+        if i['relation'] == 'next':
+            return i['url']
+    return None
+        
+def get_patient_everything(full_json_output, patient_id, smart_client):
+    """GET all FHIR resources for the Patient using the patient $everything operation - pagination handling included"""
     everything_url = f"Patient/{patient_id}/$everything"
-    everything_refs = smart_client.server.request_json(everything_url)
+    json_response = smart_client.server.request_json(everything_url)
 
-    everything_content = []
-    for i in everything_refs["entry"]:
-        everything_content.append(i["resource"])
+    for i in json_response["entry"]:
+        full_json_output.append(i["resource"])
 
-    return everything_content
+    next_url = check_if_more_pages(json_response)
+    if next_url:
+        get_patient_everything(full_json_output, next_url, patient_id)
+    return full_json_output
 
 
-# get medications for test patient from past year:
 def get_medications(patient_id, smart_client):
-    med_url = f"MedicationStatement?patient={patient_id}"
+    """GET all medications for test patient since April 29th of 2020"""
+    med_url = f"MedicationStatement?patient={patient_id}" + '&effective=gt2020-04-29T01:00:00&_count=1000'
     med_refs = smart_client.server.request_json(med_url)
 
     medication_content = []
@@ -124,6 +133,7 @@ def get_medications(patient_id, smart_client):
 
 
 def wait_for_query_status(smart_client, patient_id, max_time: int = 900):
+    """Function that polls Particle for a 200 code to indicate that the POST $query is complete and ready for FHIR resource GET calls"""
     path = f"Patient/{patient_id}/$query"
     get_response = smart_client.server._get(path)
     start_time = time.time()
@@ -151,15 +161,20 @@ if __name__ == "__main__":
 
     jwt = get_auth(args.client_id, args.client_secret, args.base_url)
     smart_client = connect_to_server(args.base_url, jwt)
-    patient = create_patient()
-    patient_id = post_patient_to_server(patient, smart_client)
+    patient_posted = create_patient()
+    patient_id = post_patient_to_server(patient_posted, smart_client)
 
     post_query(smart_client, patient_id)
     wait_for_query_status(smart_client, patient_id, args.timeout_seconds)
 
-    patient_everything = get_patient_everything(patient_id, smart_client)
+    full_json_output = []
+    full_json_output = get_patient_everything(full_json_output, patient_id, smart_client)
+    print(
+        f"successfully retrieved {len(full_json_output)} resources from patient everything"
+    )
+
     medications = get_medications(patient_id, smart_client)
     print(
-        f"successfully retrieved {len(medications)} medication resources and patient everything"
+        f"successfully retrieved {len(medications)} medication resources that date from april 29th, 2020"
     )
     print("in your own implementation, you could do something with these!")
