@@ -101,13 +101,20 @@ def post_query(smart_client, patient_id):
 
 
 def make_url(type_of_query, patient_id, params = None):
-    """Helper function to create URL for requests"""
+    """ 
+        Helper function to create URL for requests
+
+        More information about usable parameters
+        can be found here:
+        https://docs.particlehealth.com/docs/cooking-with-fhir#particle-supported-fhir-search-parameters
+    
+    """
     if type_of_query == '$everything':
         return f"Patient/{patient_id}/$everything"
 
     elif type_of_query == 'MedicationStatement':
         med_url = f"MedicationStatement?patient={patient_id}"
-        if params is not None:
+        if params is not None: 
             med_url = med_url + params
         return med_url
 
