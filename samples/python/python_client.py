@@ -123,18 +123,17 @@ def get_medications(patient_id, smart_client):
     return medication_content
 
 
-def wait_for_query_status(smart_client, patient_id):
+def wait_for_query_status(smart_client, patient_id, max_time: int = 900):
     path = f"Patient/{patient_id}/$query"
     get_response = smart_client.server._get(path)
     start_time = time.time()
-    max_time = 900
     get_response = None
 
     while time.time() - start_time < max_time:
         get_response = smart_client.server._get(path)
         if get_response.status_code == 200:
             return
-        print(get_response.status_code)
+        print("waiting for query, status: ", get_response.status_code)
         time.sleep(30)
 
     raise Exception("The Query has Timed Out after 15 Minutes")
@@ -146,6 +145,7 @@ if __name__ == "__main__":
     parser.add_argument("--base-url", type=str, required=True)
     parser.add_argument("--client-id", type=str, required=True)
     parser.add_argument("--client-secret", type=str, required=True)
+    parser.add_argument("--timeout-seconds", default=900, type=int)
 
     args = parser.parse_args(sys.argv[1:])
 
@@ -155,7 +155,11 @@ if __name__ == "__main__":
     patient_id = post_patient_to_server(patient, smart_client)
 
     post_query(smart_client, patient_id)
-    wait_for_query_status(smart_client, patient_id)
+    wait_for_query_status(smart_client, patient_id, args.timeout_seconds)
 
     patient_everything = get_patient_everything(patient_id, smart_client)
     medications = get_medications(patient_id, smart_client)
+    print(
+        f"successfully retrieved {len(medications)} medication resources and patient everything"
+    )
+    print("in your own implementation, you could do something with these!")
