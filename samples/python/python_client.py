@@ -1,4 +1,5 @@
 # import relevant packages
+from ast import Raise
 import requests
 import time
 import argparse
@@ -88,7 +89,7 @@ def post_patient_to_server(example_patient, smart_client):
 
 
 def post_query(smart_client, patient_id):
-    """POST a query to the Particle Network for the newly generated Patient"""
+    """POST a query to the Particle Network for a given Patient"""
     path = f"Patient/{patient_id}/$query"
     data = {
         "resourceType": "Parameters",
@@ -99,6 +100,21 @@ def post_query(smart_client, patient_id):
     return post_response
 
 
+def make_url(type_of_query, patient_id, params = None):
+    """Helper function to create URL for requests"""
+    if type_of_query == '$everything':
+        return f"Patient/{patient_id}/$everything"
+
+    elif type_of_query == 'MedicationStatement':
+        med_url = f"MedicationStatement?patient={patient_id}"
+        if params is not None:
+            med_url = med_url + params
+        return med_url
+
+    else:
+        raise NotImplementedError("The preset URL you specified is not implemented - please use '$everything', or 'MedicationStatement'")
+        
+
 def check_if_more_pages(json_response):
     """Helper function to check if there is a next page link in the response"""
     for i in json_response['link']:
@@ -106,17 +122,21 @@ def check_if_more_pages(json_response):
             return i['url']
     return None
         
-def get_all_fhir_resources(everything_output, patient_id, smart_client, url):
+
+def get_all_fhir_resources(smart_client, url, everything_content=None):
     """GET all FHIR resources for the passed resource type URL - pagination handling included"""
+    if everything_content is None:
+        everything_content = []
+
     json_response = smart_client.server.request_json(url)
 
     for i in json_response["entry"]:
-        everything_output.append(i["resource"])
+        everything_content.append(i["resource"])
 
     next_url = check_if_more_pages(json_response)
     if next_url:
-        get_all_fhir_resources(everything_output, patient_id, smart_client, next_url)
-    return everything_output
+        get_all_fhir_resources(smart_client, next_url, everything_content)
+    return everything_content
 
 
 def wait_for_query_status(smart_client, patient_id, max_time: int = 900):
@@ -154,17 +174,20 @@ if __name__ == "__main__":
     post_query(smart_client, patient_id)
     wait_for_query_status(smart_client, patient_id, args.timeout_seconds)
 
-    #GET all FHIR resources for the Patient using the patient $everything operation
-    everything_output = []
-    everything_output = get_all_fhir_resources(everything_output, patient_id, smart_client, f"Patient/{patient_id}/$everything")
+    #GET all FHIR resources for the Patient using the $everything operation
+    everything_url = make_url('$everything', patient_id)
+    everything_output = get_all_fhir_resources(smart_client, everything_url)
     print(
         f"Successfully retrieved {len(everything_output)} resources from Patient $everything"
     )
 
-    #GET all medications for test patient since April 29th of 2020
-    medication_output = []
-    medication_output = get_all_fhir_resources(medication_output, patient_id, smart_client, f"MedicationStatement?patient={patient_id}" + '&effective=gt2020-04-29T01:00:00&_count=1000')
+    #GET all MedicationStatement resources for test patient since April 29th of 2020 - optional params set in this example
+    med_url = make_url('MedicationStatement', patient_id, params = '&effective=gt2020-04-29T01:00:00&_count=1000')
+    medication_output = get_all_fhir_resources(smart_client, med_url)
     print(
         f"Successfully retrieved {len(medication_output)} Medication Resources that date from April 29th, 2020"
     )
     print("In your own implementation, you could do something with these!")
+
+
+
