@@ -99,14 +99,27 @@ def post_query(smart_client, patient_id):
 
 
 # set up functions for resource retrieval
-# TODO replace with patient$everything
-def get_patient_everything(patient_id, smart_client):
-    everything_url = f"Patient/{patient_id}/$everything"
-    everything_refs = smart_client.server.request_json(everything_url)
+def get_patient_everything(patient_id, smart_client, url=None, everything_content=[]):
+    if not url:
+        url = f"Patient/{patient_id}/$everything"
+    everything_refs = smart_client.server.request_json(url)
 
-    everything_content = []
     for i in everything_refs["entry"]:
         everything_content.append(i["resource"])
+
+    next_urls = []
+    for i in everything_refs["link"]:
+        if i["relation"] == "next":
+            next_urls.append(i["url"])
+
+        for next in set(next_urls):
+            print("getting next page with url", next)
+            get_patient_everything(
+                patient_id,
+                smart_client,
+                url=next,
+                everything_content=everything_content,
+            )
 
     return everything_content
 
@@ -160,6 +173,6 @@ if __name__ == "__main__":
     patient_everything = get_patient_everything(patient_id, smart_client)
     medications = get_medications(patient_id, smart_client)
     print(
-        f"successfully retrieved {len(medications)} medication resources and patient everything"
+        f"successfully retrieved {len(medications)} medication resources and {len(patient_everything)} patient everything resources"
     )
     print("in your own implementation, you could do something with these!")
