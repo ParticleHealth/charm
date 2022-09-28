@@ -1,5 +1,4 @@
 # import relevant packages
-from ast import Raise
 import requests
 import time
 import argparse
