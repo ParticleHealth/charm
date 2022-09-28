@@ -8,10 +8,10 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "cross-fetch": "^3.1.4",
+    "cross-fetch": "^3.1.5",
     "dayjs": "^1.10.7",
     "fhir-kit-client": "^1.8.1",
-    "next": "12.0.7",
+    "next": "12.3.1",
     "react": "17.0.2",
     "react-dom": "17.0.2"
   },
