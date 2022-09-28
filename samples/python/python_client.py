@@ -106,8 +106,8 @@ def check_if_more_pages(json_response):
             return i['url']
     return None
         
-def get_patient_everything(everything_output, patient_id, smart_client, url):
-    """GET all FHIR resources for the Patient using the patient $everything operation - pagination handling included"""
+def get_all_fhir_resources(everything_output, patient_id, smart_client, url):
+    """GET all FHIR resources for the passed resource type URL - pagination handling included"""
     json_response = smart_client.server.request_json(url)
 
     for i in json_response["entry"]:
@@ -115,20 +115,8 @@ def get_patient_everything(everything_output, patient_id, smart_client, url):
 
     next_url = check_if_more_pages(json_response)
     if next_url:
-        get_patient_everything(everything_output, patient_id, smart_client, next_url)
+        get_all_fhir_resources(everything_output, patient_id, smart_client, next_url)
     return everything_output
-
-
-def get_medications(patient_id, smart_client):
-    """GET all medications for test patient since April 29th of 2020"""
-    med_url = f"MedicationStatement?patient={patient_id}" + '&effective=gt2020-04-29T01:00:00&_count=1000'
-    med_refs = smart_client.server.request_json(med_url)
-
-    medication_content = []
-    for i in med_refs["entry"]:
-        medication_content.append(i["resource"])
-
-    return medication_content
 
 
 def wait_for_query_status(smart_client, patient_id, max_time: int = 900):
@@ -166,14 +154,17 @@ if __name__ == "__main__":
     post_query(smart_client, patient_id)
     wait_for_query_status(smart_client, patient_id, args.timeout_seconds)
 
+    #GET all FHIR resources for the Patient using the patient $everything operation
     everything_output = []
-    everything_output = get_patient_everything(everything_output, patient_id, smart_client, f"Patient/{patient_id}/$everything")
+    everything_output = get_all_fhir_resources(everything_output, patient_id, smart_client, f"Patient/{patient_id}/$everything")
     print(
         f"Successfully retrieved {len(everything_output)} resources from Patient $everything"
     )
 
-    medications = get_medications(patient_id, smart_client)
+    #GET all medications for test patient since April 29th of 2020
+    medication_output = []
+    medication_output = get_all_fhir_resources(medication_output, patient_id, smart_client, f"MedicationStatement?patient={patient_id}" + '&effective=gt2020-04-29T01:00:00&_count=1000')
     print(
-        f"Successfully retrieved {len(medications)} Medication Resources that date from April 29th, 2020"
+        f"Successfully retrieved {len(medication_output)} Medication Resources that date from April 29th, 2020"
     )
     print("In your own implementation, you could do something with these!")
