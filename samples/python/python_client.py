@@ -119,6 +119,7 @@ def get_all_fhir_resources(everything_output, patient_id, smart_client, url):
     return everything_output
 
 
+
 def wait_for_query_status(smart_client, patient_id, max_time: int = 900):
     """Function that polls Particle for a 200 code to indicate that the POST $query is complete and ready for FHIR resource GET calls"""
     path = f"Patient/{patient_id}/$query"
@@ -166,5 +167,6 @@ if __name__ == "__main__":
     medication_output = get_all_fhir_resources(medication_output, patient_id, smart_client, f"MedicationStatement?patient={patient_id}" + '&effective=gt2020-04-29T01:00:00&_count=1000')
     print(
         f"Successfully retrieved {len(medication_output)} Medication Resources that date from April 29th, 2020"
+
     )
     print("In your own implementation, you could do something with these!")
