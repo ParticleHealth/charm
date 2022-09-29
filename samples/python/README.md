@@ -2,12 +2,21 @@
 ## SMART on FHIR Python Client 4.0:
 
 ### Setup:
-install SMART FHIR CLIENT directly from github for v4.0:
+If using `pip`:
+```
+pip install -r requirements.txt
+```
 
-pip install git+https://github.com/smart-on-fhir/client-py.git
+If using `poetry`:
+```
+poetry update && poetry install
+```
+
 
 ### Usage:
 python python_client.py --client-id $ID --client-secret $SECRET --base-url $HOST
+
+Example Base URL: 'https://sandbox.particlehealth.com'
 
 ### Documentation for Client:
 http://docs.smarthealthit.org/client-py/index.html

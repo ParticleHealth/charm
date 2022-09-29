@@ -1,209 +1,201 @@
-#import relevant packages
+# import relevant packages
 import requests
 import time
 import argparse
 import sys
 from collections import Counter
-import fhirclient
 from fhirclient import client
-from fhirclient import server
 from fhirclient import auth
-import fhirclient.models.person as p
-import fhirclient.models.humanname as hn
-import fhirclient.models.address as add
-import fhirclient.models.fhirdate as fd
-import fhirclient.models.identifier as ident
-import fhirclient.models.codeableconcept as cc
-import fhirclient.models.contactpoint as cp
+from fhirclient.models import (
+    patient,
+    humanname,
+    address,
+    fhirdate,
+    identifier,
+    codeableconcept,
+    contactpoint,
+)
+
+
+def get_auth(client_id, client_secret, base_url) -> str:
+    """Generate JWT using client id and client secret provided from Particle Health"""
+    url = base_url + "/auth/"
+    headers = {"client-id": client_id, "client-secret": client_secret}
+    r = requests.get(url, headers=headers)
+    if r.status_code == 200:
+        jwt = r.text
+        return jwt
+    else:
+        raise Exception(
+            f"Got status code {r.status_code}. Please ensure your Client ID and Client Secret are Valid"
+        )
+
+
+def connect_to_server(base_url: str, jwt: str):
+    """Connect client to R4 server and authenticate with JWT"""
+    settings = {"app_id": "Particle", "api_base": base_url + "/R4/"}
+    smart_client = client.FHIRClient(settings=settings)
+    o_auth = auth.FHIROAuth2Auth()
+    o_auth.access_token = jwt
+    o_auth.signed_headers(headers={})
+    # point client auth to our OAuth2 build
+    smart_client.server.auth = o_auth
+
+    return smart_client
+
+
+def create_patient():
+    """make example fhir patient"""
+    example_patient = patient.Patient()
+    example_patient.gender = "Male"
+
+    person_name = humanname.HumanName()
+    person_name.family = "Klein"
+    person_name.given = ["Quinton"]
+    example_patient.name = [person_name]
+
+    person_address = address.Address()
+    person_address.city = "Amesbury"
+    person_address.line = ["629 Schuster Common"]
+    person_address.postalCode = "01913"
+    person_address.state = "MA"
+    example_patient.address = [person_address]
+
+    person_bday = fhirdate.FHIRDate()
+    person_bday.origval = "1967-10-20"
+    example_patient.birthDate = person_bday
+
+    person_ident = identifier.Identifier()
+    person_ident.type = codeableconcept.CodeableConcept()
+    person_ident.type.text = "SSN"
+    person_ident.value = "123-45-6789"
+    example_patient.identifier = [person_ident]
+
+    person_contact = contactpoint.ContactPoint()
+    person_contact.system = "phone"
+    person_contact.value = "1-234-567-8910"
+    example_patient.telecom = [person_contact]
+
+    return example_patient
+
+
+def post_patient_to_server(example_patient, smart_client):
+    """POST the created patient to the FHIR server"""
+    patient_loaded = example_patient.create(smart_client.server)
+    patient_id = patient_loaded["id"]
+
+    return patient_id
+
+
+def post_query(smart_client, patient_id):
+    """POST a query to the Particle Network for a given Patient"""
+    path = f"Patient/{patient_id}/$query"
+    data = {
+        "resourceType": "Parameters",
+        "parameter": [{"name": "purpose", "valueString": "TREATMENT"}],
+    }
+    post_response = smart_client.server.post_json(path, data)
+
+    return post_response
+
+
+def make_url(type_of_query, patient_id, params = None):
+    """ 
+        Helper function to create URL for requests
+
+        More information about usable parameters
+        can be found here:
+        https://docs.particlehealth.com/docs/cooking-with-fhir#particle-supported-fhir-search-parameters
+    
+    """
+    if type_of_query == '$everything':
+        return f"Patient/{patient_id}/$everything"
+
+    elif type_of_query == 'MedicationStatement':
+        med_url = f"MedicationStatement?patient={patient_id}"
+        if params is not None: 
+            med_url = med_url + params
+        return med_url
+
+    else:
+        raise NotImplementedError("The preset URL you specified is not implemented - please use '$everything', or 'MedicationStatement'")
+        
+
+def check_if_more_pages(json_response):
+    """Helper function to check if there is a next page link in the response"""
+    for i in json_response['link']:
+        if i['relation'] == 'next':
+            return i['url']
+    return None
+        
+
+def get_all_fhir_resources(smart_client, url, everything_content=None):
+    """GET all FHIR resources for the passed resource type URL - pagination handling included"""
+    if everything_content is None:
+        everything_content = []
+
+    json_response = smart_client.server.request_json(url)
+
+    for i in json_response["entry"]:
+        everything_content.append(i["resource"])
+
+    next_url = check_if_more_pages(json_response)
+    if next_url:
+        get_all_fhir_resources(smart_client, next_url, everything_content)
+    return everything_content
 
 
 
-#USING AUTHENTICATION ENDPOINT TO GENERATE JWT
-parser = argparse.ArgumentParser()
-parser.add_argument("--base-url", type=str, required=True)
-parser.add_argument("--client-id", type=str, required=True)
-parser.add_argument("--client-secret", type=str, required=True)
-args = parser.parse_args(sys.argv[1:])
+def wait_for_query_status(smart_client, patient_id, max_time: int = 900):
+    """Function that polls Particle for a 200 code to indicate that the POST $query is complete and ready for FHIR resource GET calls"""
+    path = f"Patient/{patient_id}/$query"
+    get_response = smart_client.server._get(path)
+    start_time = time.time()
+    get_response = None
 
-print('\n' + 'Generating JWT using Client ID and Client Secret Provided...')
-client_id = args.client_id
-client_secret = args.client_secret
-url = args.base_url + '/auth/'
-headers = {'client-id': client_id,
-           'client-secret': client_secret
-          }
-r = requests.get(url, headers=headers)
-if r.status_code == 200:
-    jwt = r.text
-    print('JWT: \n' + '\t' + str(jwt) + '/n')
-else:
-    print('Status Code: ' + str(r.status_code))
-    print('Please Ensure your Client ID and Client Secret are Valid')
-    exit()
+    while time.time() - start_time < max_time:
+        get_response = smart_client.server._get(path)
+        if get_response.status_code == 200:
+            return
+        print("Waiting for query, status: ", get_response.status_code)
+        time.sleep(30)
 
-#CONNECTING CLIENT TO R4 SERVER AND AUTHENTICATE WITH JWT
-print('Authenticating with JWT...')
-settings = {
-    'app_id': 'Particle',
-    'api_base': args.base_url + '/R4/'
-}
-smart = client.FHIRClient(settings=settings)
-o_auth = auth.FHIROAuth2Auth()
-o_auth.access_token = jwt
-o_auth.signed_headers(headers = {})
-#point client auth to our OAuth2 build
-smart.server.auth = o_auth
-print("Authentication Process Complete" + '\n')
+    raise Exception("The Query has Timed Out after 15 Minutes")
 
 
+if __name__ == "__main__":
 
-#CREATING NEW PERSON WITH CLIENT:
-print('Creating Person JSON to POST...')
-my_person = p.Person()
-my_person.gender = 'Male'
-person_name = hn.HumanName()
-person_name.family = 'Klein'
-person_name.given = ['Quinton']
-my_person.name = [person_name]
-person_address = add.Address()
-person_address.city = "Amesbury"
-person_address.line = ['629 Schuster Common']
-person_address.postalCode = '01913'
-person_address.state = 'MA'
-my_person.address = [person_address]
-person_bday = fd.FHIRDate()
-person_bday.origval = '1967-10-20'
-my_person.birthDate = person_bday
-person_ident = ident.Identifier()
-person_ident.type = cc.CodeableConcept()
-person_ident.type.text = 'SSN'
-person_ident.value = '123-45-6789'
-my_person.identifier = [person_ident]
-person_contact = cp.ContactPoint()
-person_contact.system = 'phone'
-person_contact.value = '1-234-567-8910'
-my_person.telecom = [person_contact]
-print('Person to POST: \n')
-print('\t' + str(my_person.as_json()) + '\n')
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--base-url", type=str, required=True)
+    parser.add_argument("--client-id", type=str, required=True)
+    parser.add_argument("--client-secret", type=str, required=True)
+    parser.add_argument("--timeout-seconds", default=900, type=int)
+
+    args = parser.parse_args(sys.argv[1:])
+
+    jwt = get_auth(args.client_id, args.client_secret, args.base_url)
+    smart_client = connect_to_server(args.base_url, jwt)
+    patient_posted = create_patient()
+    patient_id = post_patient_to_server(patient_posted, smart_client)
+
+    post_query(smart_client, patient_id)
+    wait_for_query_status(smart_client, patient_id, args.timeout_seconds)
+
+    #GET all FHIR resources for the Patient using the $everything operation
+    everything_url = make_url('$everything', patient_id)
+    everything_output = get_all_fhir_resources(smart_client, everything_url)
+    print(
+        f"Successfully retrieved {len(everything_output)} resources from Patient $everything"
+    )
+
+    #GET all MedicationStatement resources for test patient since April 29th of 2020 - optional params set in this example
+    med_url = make_url('MedicationStatement', patient_id, params = '&effective=gt2020-04-29T01:00:00&_count=1000')
+    medication_output = get_all_fhir_resources(smart_client, med_url)
+    print(
+        f"Successfully retrieved {len(medication_output)} Medication Resources that date from April 29th, 2020"
+
+    )
+    print("In your own implementation, you could do something with these!")
 
 
 
-#POST NEW PERSON TO SERVER WITH CLIENT
-print('Posting Person to FHIR Server...')
-Person_Loaded = p.Person.create(my_person, smart.server)
-person_loaded_id = Person_Loaded["id"]
-print('Person ID returned from FHIR server: \n')
-print('\t' + str(person_loaded_id) + '\n')
-
-#read uploaded person to ensure upload success:
-print('Checking Upload Success...')
-patient = p.Person.read(person_loaded_id, smart.server)
-print('Results from Reading Person Uploaded: \n')
-print('\t' + str(patient.as_json()) + '\n')
-
-
-
-#POST QUERY FOR NEW PERSON WITH CLIENT:
-print("Initiating POST Query for Person...")
-test_person_id = person_loaded_id
-path = 'Person/' + test_person_id + "/$query"
-data = { "resourceType": "Parameters", "parameter": [{ "name": "purpose", "valueString": "TREATMENT" }] }
-post_response = smart.server.post_json(path, data)
-print('Status of Query for Person: \n')
-print('\t' + str(post_response) + '\n')
-print('Body: \n')
-print('\t' + str(post_response.text) + '\n')
-
-
-
-#SET UP FUNCTIONS FOR RESOURCE RETRIEVAL
-def get_resources():
-    #get all resource references from compositions, factor in pagination:
-    print('Getting Resource References from Compositions...' + '\n')
-    url_ext = 'Composition?person=' + test_person_id
-    composition = smart.server.request_json(url_ext)
-
-    next_page = True
-    resource_references = []
-    while next_page == True:
-        for i in composition['entry']:
-            for j in i['resource']['section']:
-                for k in (j['entry']):
-                    resource_references.append(k['reference'])
-
-        #grab next page endpoint
-        for i in composition['link']:
-            if (i['relation']) == 'next':
-                next_page = True
-                next_endpoint = (i['url'][4:])
-                #initiate GET call and store returned load for new pages
-                composition = smart.server.request_json(next_endpoint)
-            else:
-                next_page = False
-
-    #get resource counts and contents from all resource references:
-    print('Getting All Resource Content from Resource References...' + '\n')
-    all_resource_content = []
-    all_types = []
-    for i in resource_references:
-        resource_content = smart.server.request_json(i)
-        all_resource_content.append(resource_content)
-        all_types.append(i.split('/')[0])
-
-    print(str(len(all_types)) + ' total fhir resources')
-    counter = Counter(all_types)
-    print(str(len(counter)) + ' unique resource types:')
-    for i in counter:
-        print("\t" + i + " - " + str(counter[i]) + ' resources')
-
-    print('\n' + 'Bundling Resource Content...' + '\n')
-    for i in all_resource_content:
-        print(str(i) + '\n')
-
-
-
-#GET medications for test patient from past year:
-def get_medications():
-    print('Gathering Medication from the Past Year for Person...' + '\n')
-    #set url with last year effective date parameter
-    med_url = 'MedicationStatement?person=' + test_person_id + '&effective=gt2020-04-29T01:00:00'
-    med_refs = smart.server.request_json(med_url)
-
-    medication_content = []
-    for i in med_refs['entry']:
-        medication_content.append(i['resource'])
-
-    for i in medication_content:
-        print(str(i) + '\n')
-
-
-
-#GET QUERY FOR NEW PERSON:
-print('Initiating GET Query for Person...')
-test_person_id = person_loaded_id
-path = 'Person/' + test_person_id + "/$query"
-start_time = time.time()
-max_time = 900
-get_response = None
-
-while True:
-    elapsed_time = time.time() - start_time
-    get_response = smart.server._get(path)
-    if get_response.status_code == 200:
-        print('The Query is Now Complete')
-        break
-    if elapsed_time > max_time:
-        print('The Query has Timed Out after 15 Minutes')
-        break
-    print('The Query is Still Running...')
-    time.sleep(30)
-
-#use results of get_response if successful to get contents and medications
-if get_response.status_code == 200:
-    print('Status Code: \n')
-    print('\t' + str(get_response.status_code) + '\n')
-    if get_response.json() is not None:
-        get_resources()
-        get_medications()
-else:
-    print("Status Code" + get_response.status_code)
